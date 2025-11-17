@@ -2,7 +2,7 @@
 
 Este directorio contendrá los scripts de migración de la base de datos.
 
-**Responsable:** Roberto Argüello (PB-12)
+**Responsable:** Roberto Argüello (PB-20)
 
 **Estado:** Pendiente implementación
 
