@@ -93,21 +93,6 @@ Después de crear el admin, puedes iniciar sesión con:
 - `POST /users` - Crear un nuevo usuario
 - `PUT /users/:id` - Actualizar un usuario
 
-## Tecnologías que Estamos Usando
-
-### Backend
-- Node.js con Express
-- JWT para manejar las sesiones
-- bcryptjs para encriptar las contraseñas
-- SQL Server (aún no está conectado, Roberto lo está trabajando)
-
-### Frontend
-- React 18 con TypeScript
-- Vite para el desarrollo
-- Tailwind CSS para los estilos
-- shadcn/ui para los componentes
-- Radix UI como base de los componentes
-
 ## Cosas Importantes que Debes Saber
 
 - Por ahora los datos están guardados en memoria. Esto significa que si reinicias el servidor, se pierden todos los datos. Esto es temporal hasta que Roberto termine de conectar la base de datos.
