@@ -9,5 +9,7 @@ export function loadEnv() {
     DB_USER: process.env.DB_USER || '',
     DB_PASSWORD: process.env.DB_PASSWORD || '',
     DB_DATABASE: process.env.DB_DATABASE || '',
+    JWT_SECRET: process.env.JWT_SECRET || 'default-secret-change-in-production',
+    JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '24h',
   };
 }
