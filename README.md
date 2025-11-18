@@ -1,32 +1,32 @@
 # ProcureHub
 
-Sistema de gestión de solicitudes de compra con flujo de aprobaciones.
+Este es el repositorio del sistema ProcureHub, un sistema para gestionar solicitudes de compra con flujo de aprobaciones.
 
 ## Estructura del Proyecto
 
-El proyecto tiene dos partes principales:
+El proyecto tiene dos carpetas principales:
 
-- `src/` - Backend (servidor API)
-- `frontend/` - Interfaz de usuario
-- `scripts/` - Scripts de utilidad
+- `src/` - Aquí está todo el código del backend (la API)
+- `frontend/` - Aquí está la interfaz que usa React
+- `scripts/` - Algunos scripts útiles que he creado
 
-## Requisitos
+## Lo que Necesitas para Empezar
 
-Necesitas tener instalado:
-- Node.js versión 18 o superior
-- npm
+Antes de empezar, asegúrate de tener instalado:
+- Node.js (versión 18 o más nueva)
+- npm (viene con Node.js)
 
 ## Instalación
 
 ### Backend
 
-Instala las dependencias del backend:
+Primero instala las dependencias del backend:
 
 ```bash
 npm install
 ```
 
-Opcional: Crea un archivo `.env` con las siguientes variables:
+Si quieres, puedes crear un archivo `.env` en la raíz del proyecto con estas variables (aunque por ahora no son obligatorias):
 
 ```
 PORT=3000
@@ -39,82 +39,70 @@ DB_DATABASE=...
 
 ### Frontend
 
-Instala las dependencias del frontend:
+Para el frontend, entra a la carpeta e instala las dependencias:
 
 ```bash
 cd frontend
 npm install
 ```
 
-## Cómo Ejecutar el Sistema
+## Cómo Correr el Proyecto
 
-### Desarrollo
-
-Necesitas abrir dos terminales:
+Necesitas tener dos terminales abiertas, una para el backend y otra para el frontend.
 
 **Terminal 1 - Backend:**
 ```bash
 npm run dev
 ```
-El backend estará disponible en `http://localhost:3000`
+Esto inicia el servidor en `http://localhost:3000`
 
 **Terminal 2 - Frontend:**
 ```bash
 cd frontend
 npm run dev
 ```
-El frontend estará disponible en `http://localhost:5173`
+Esto inicia la interfaz en `http://localhost:5173`
 
-### Crear Usuario Administrador
+## Crear el Usuario Administrador
 
-Antes de usar el sistema, necesitas crear el usuario administrador:
+Antes de poder usar el sistema, necesitas crear el usuario administrador. Hay dos formas:
 
+**Opción 1 - Desde la terminal:**
 ```bash
 npm run seed:admin
 ```
 
-O desde Postman o cualquier cliente HTTP:
+**Opción 2 - Desde Postman o cualquier cliente HTTP:**
 ```
 POST http://localhost:3000/auth/init
 ```
 
-Luego puedes iniciar sesión con:
+Después de crear el admin, puedes iniciar sesión con:
 - Email: `admin@proveeduria.com`
 - Contraseña: `admin123`
 
-## Endpoints de la API
+## Endpoints Disponibles
 
 ### Autenticación
-- `POST /auth/login` - Iniciar sesión
-- `POST /auth/init` - Crear usuario admin (solo en desarrollo)
+- `POST /auth/login` - Para iniciar sesión
+- `POST /auth/init` - Para crear el admin (solo funciona en desarrollo)
 
-### Usuarios (requiere ser administrador)
-- `GET /users` - Ver lista de usuarios
+### Usuarios (solo para administradores)
+- `GET /users` - Ver todos los usuarios
 - `GET /users/:id` - Ver un usuario específico
-- `POST /users` - Crear nuevo usuario
-- `PUT /users/:id` - Actualizar usuario
+- `POST /users` - Crear un nuevo usuario
+- `PUT /users/:id` - Actualizar un usuario
 
-## Tecnologías Utilizadas
+## Cosas Importantes que Debes Saber
 
-### Backend
-- Node.js
-- Express
-- JWT para autenticación
-- bcryptjs para encriptar contraseñas
-- SQL Server (pendiente de implementación)
+- Por ahora los datos están guardados en memoria. Esto significa que si reinicias el servidor, se pierden todos los datos. Esto es temporal hasta que Roberto termine de conectar la base de datos.
+- Cuando Roberto termine la conexión a SQL Server, solo necesitamos cambiar el archivo `src/modules/users/usersData.js` por consultas reales a la base de datos.
+- El frontend se conecta al backend automáticamente. Cuando haces una petición a `/api`, se redirige a `http://localhost:3000`.
+- El token de autenticación se guarda en el navegador para que no tengas que iniciar sesión cada vez.
+- Si reinicias el servidor y pierdes los datos, solo vuelve a ejecutar `npm run seed:admin` o `POST /auth/init` para crear el admin de nuevo.
 
-### Frontend
-- React 18
-- TypeScript
-- Vite
-- Tailwind CSS
-- shadcn/ui
-- Radix UI
+## Si Tienes Problemas
 
-## Notas Importantes
-
-- Los datos están guardados en memoria temporalmente. Esto significa que si reinicias el servidor, los datos se pierden. Esto es solo para desarrollo.
-- Cuando se complete la conexión a SQL Server, los datos se guardarán permanentemente en la base de datos.
-- El frontend se conecta al backend automáticamente mediante un proxy.
-- El token de autenticación se guarda en el navegador para mantener la sesión activa.
-- Si reinicias el servidor, necesitas volver a crear el usuario admin usando `npm run seed:admin` o `POST /auth/init`.
+- Si el frontend no se conecta al backend, verifica que ambos estén corriendo en las terminales correctas.
+- Si no puedes hacer login, asegúrate de haber creado el usuario admin primero.
+- Si los datos desaparecen, es normal. Están en memoria y se pierden al reiniciar. Solo vuelve a crear el admin.
