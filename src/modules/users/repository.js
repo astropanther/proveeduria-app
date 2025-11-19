@@ -1,34 +1,50 @@
 /**
  * User repository
  * PB-6: Registrar Usuarios y Roles
+ * PB-7: Editar e Inactivar Usuarios
  * TODO: Implementar consultas a base de datos (PB-20/PB-21)
  */
 
-// eslint-disable-next-line no-unused-vars
-export async function findByEmail(_email) {
-  // TODO: Implementar consulta SQL por email
-  // SELECT * FROM users WHERE email = @email
-  return null;
+import bcrypt from 'bcryptjs';
+import * as usersData from './usersData.js';
+
+export async function findByEmail(email) {
+  return usersData.findUserByEmail(email);
 }
 
-// eslint-disable-next-line no-unused-vars
-export async function create(_userData) {
-  // TODO: Implementar inserción SQL
-  // INSERT INTO users (email, password_hash, role, ...) VALUES (...)
-  // Retornar el usuario creado con su ID
-  return null;
+export async function create(userData) {
+  const { email, password, role, nombre } = userData;
+  const password_hash = await bcrypt.hash(password, 10);
+  const newUser = usersData.addUser({
+    email,
+    password_hash,
+    role,
+    nombre: nombre || email.split('@')[0],
+    activo: true,
+  });
+  return newUser;
 }
 
-// eslint-disable-next-line no-unused-vars
-export async function findById(_id) {
-  // TODO: Implementar consulta SQL por ID
-  // SELECT * FROM users WHERE id = @id
-  return null;
+export async function findById(id) {
+  return usersData.findUserById(id);
 }
 
-// eslint-disable-next-line no-unused-vars
-export async function findAll(_filters = {}) {
-  // TODO: Implementar consulta SQL para listar usuarios
-  // Con filtros opcionales (role, estado activo/inactivo, etc.)
-  return [];
+export async function findAll(filters = {}) {
+  let users = usersData.getAllUsers();
+  if (filters.role) {
+    users = users.filter(u => u.role === filters.role);
+  }
+  if (filters.activo !== undefined) {
+    users = users.filter(u => u.activo === filters.activo);
+  }
+  return users;
+}
+
+export async function update(id, updates) {
+  // Si se actualiza la contraseña, encriptarla
+  if (updates.password) {
+    updates.password_hash = await bcrypt.hash(updates.password, 10);
+    delete updates.password;
+  }
+  return usersData.updateUser(id, updates);
 }
