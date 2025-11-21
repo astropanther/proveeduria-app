@@ -6,3 +6,10 @@ frontend/node_modules/
 frontend/dist/
 frontend/build/
 GUIA_GIT_CORTA.md
+reports/
+*.xlsx
+*.pdf
+docker-compose.yml
+src/db/migrations/
+scripts/runMigrations.js
+.backup_local/

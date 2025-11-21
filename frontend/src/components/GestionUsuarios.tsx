@@ -74,6 +74,17 @@ export function GestionUsuarios() {
   });
   const [creating, setCreating] = useState(false);
 
+  // Formulario de edición
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<Usuario | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    nombre: '',
+    email: '',
+    password: '',
+    rol: 'comprador',
+  });
+  const [updating, setUpdating] = useState(false);
+
   // Cargar usuarios al montar
   useEffect(() => {
     loadUsuarios();
@@ -124,6 +135,50 @@ export function GestionUsuarios() {
       setError(err.message || 'Error al crear usuario');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleEdit = (usuario: Usuario) => {
+    setEditingUser(usuario);
+    setEditFormData({
+      nombre: usuario.nombre,
+      email: usuario.email,
+      password: '', // No prellenar password por seguridad
+      rol: usuario.rol,
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateUser = async () => {
+    if (!editingUser) return;
+
+    try {
+      setUpdating(true);
+      setError('');
+      setSuccess('');
+
+      const updateData: any = {
+        nombre: editFormData.nombre,
+        email: editFormData.email,
+        role: mapFrontendRoleToBackend(editFormData.rol),
+      };
+
+      // Solo actualizar password si se proporciona uno nuevo
+      if (editFormData.password && editFormData.password.length > 0) {
+        updateData.password = editFormData.password;
+      }
+
+      await usersAPI.update(parseInt(editingUser.id), updateData);
+
+      setSuccess('Usuario actualizado exitosamente');
+      setIsEditDialogOpen(false);
+      setEditingUser(null);
+      setEditFormData({ nombre: '', email: '', password: '', rol: 'comprador' });
+      await loadUsuarios();
+    } catch (err: any) {
+      setError(err.message || 'Error al actualizar usuario');
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -395,7 +450,12 @@ export function GestionUsuarios() {
                     <TableCell>{new Date(usuario.fechaCreacion).toLocaleDateString('es-ES')}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleEdit(usuario)}
+                          title="Editar usuario"
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button 
@@ -403,6 +463,7 @@ export function GestionUsuarios() {
                           size="sm" 
                           className={usuario.activo ? 'text-red-600' : 'text-green-600'}
                           onClick={() => handleToggleActivo(usuario)}
+                          title={usuario.activo ? 'Inactivar usuario' : 'Activar usuario'}
                         >
                           {usuario.activo ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
                         </Button>
@@ -417,6 +478,101 @@ export function GestionUsuarios() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog de Edición */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Usuario</DialogTitle>
+            <DialogDescription>
+              Modifica los datos del usuario {editingUser?.nombre}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-nombre">Nombre Completo</Label>
+              <Input 
+                id="edit-nombre" 
+                placeholder="Ej: Juan Pérez" 
+                value={editFormData.nombre}
+                onChange={(e) => setEditFormData({ ...editFormData, nombre: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Correo Electrónico</Label>
+              <Input 
+                id="edit-email" 
+                type="email" 
+                placeholder="usuario@empresa.com"
+                value={editFormData.email}
+                onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-password">Nueva Contraseña (opcional)</Label>
+              <Input 
+                id="edit-password" 
+                type="password" 
+                placeholder="Dejar vacío para mantener la actual"
+                value={editFormData.password}
+                onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Solo completa este campo si deseas cambiar la contraseña
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-rol">Rol del Usuario</Label>
+              <Select value={editFormData.rol} onValueChange={(value) => setEditFormData({ ...editFormData, rol: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar rol" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="comprador">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Comprador
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="aprobador_jefe">
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="h-4 w-4" />
+                      Aprobador Jefe
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="aprobador_financiero">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-4 w-4" />
+                      Aprobador Financiero
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Administrador
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={updating}>
+              Cancelar
+            </Button>
+            <Button onClick={handleUpdateUser} disabled={updating}>
+              {updating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Actualizando...
+                </>
+              ) : (
+                'Actualizar Usuario'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

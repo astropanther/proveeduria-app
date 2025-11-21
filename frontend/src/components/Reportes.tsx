@@ -5,10 +5,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
-import { FileDown, FileSpreadsheet, Filter, BarChart3, TrendingUp, DollarSign, Calendar } from 'lucide-react';
+import { FileDown, FileSpreadsheet, Filter, BarChart3, TrendingUp, DollarSign, Calendar, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { UserRole } from '../App';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { reportesAPI } from '../services/api';
 
 interface ReportesProps {
   userRole: UserRole;
@@ -54,11 +55,71 @@ export function Reportes({ userRole }: ReportesProps) {
   const [filterEstado, setFilterEstado] = useState('todos');
   const [fechaInicio, setFechaInicio] = useState('2024-06-01');
   const [fechaFin, setFechaFin] = useState('2024-06-30');
+  const [loading, setLoading] = useState(false);
+  const [loadingTipo, setLoadingTipo] = useState<'pdf' | 'excel' | 'ambos' | null>(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [archivosGenerados, setArchivosGenerados] = useState<{ excel?: string; pdf?: string }>({});
 
   const filteredData = reporteData.filter(item => {
     const matchesEstado = filterEstado === 'todos' || item.estado === filterEstado;
     return matchesEstado;
   });
+
+  const handleGenerarReporte = async (formato: 'excel' | 'pdf' | 'ambos') => {
+    setLoading(true);
+    setLoadingTipo(formato);
+    setError('');
+    setSuccess('');
+
+    try {
+      const estado = filterEstado === 'todos' ? undefined : filterEstado;
+      console.log('Generando reporte con filtros:', { estado, fechaInicio, fechaFin, formato });
+      
+      const resultado = await reportesAPI.generar({
+        estado,
+        fechaInicio,
+        fechaFin,
+        formato,
+      });
+
+      console.log('Resultado del reporte:', resultado);
+      setArchivosGenerados(resultado.archivos);
+      setSuccess(`Reporte generado exitosamente. Total: ${resultado.total} solicitudes`);
+
+      // Descargar archivos automáticamente con un pequeño delay
+      if (resultado.archivos) {
+        setTimeout(async () => {
+          try {
+            if (resultado.archivos.excel) {
+              console.log('Descargando Excel:', resultado.archivos.excel);
+              await reportesAPI.descargar(resultado.archivos.excel);
+              console.log('Excel descargado exitosamente');
+            }
+            if (resultado.archivos.pdf) {
+              // Pequeño delay entre descargas
+              setTimeout(async () => {
+                console.log('Descargando PDF:', resultado.archivos.pdf);
+                await reportesAPI.descargar(resultado.archivos.pdf!);
+                console.log('PDF descargado exitosamente');
+              }, 1000);
+            }
+          } catch (downloadError: any) {
+            console.error('Error al descargar:', downloadError);
+            setError(`Error al descargar archivos: ${downloadError.message}`);
+          }
+        }, 1000);
+      } else {
+        setError('No se generaron archivos');
+      }
+    } catch (err: any) {
+      console.error('Error al generar reporte:', err);
+      setError(err.message || 'Error al generar reporte');
+    } finally {
+      setLoading(false);
+      setLoadingTipo(null);
+    }
+  };
 
   return (
     <div className="p-8 space-y-6">
@@ -68,13 +129,41 @@ export function Reportes({ userRole }: ReportesProps) {
           <p className="text-gray-600 mt-2">Análisis y reportes del sistema</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
-            <FileDown className="mr-2 h-4 w-4" />
+          <Button 
+            variant="outline" 
+            onClick={() => handleGenerarReporte('pdf')}
+            disabled={loading}
+          >
+            {loading && loadingTipo === 'pdf' ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="mr-2 h-4 w-4" />
+            )}
             Exportar PDF
           </Button>
-          <Button variant="outline">
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
+          <Button 
+            variant="outline" 
+            onClick={() => handleGenerarReporte('excel')}
+            disabled={loading}
+          >
+            {loading && loadingTipo === 'excel' ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+            )}
             Exportar Excel
+          </Button>
+          <Button 
+            variant="default" 
+            onClick={() => handleGenerarReporte('ambos')}
+            disabled={loading}
+          >
+            {loading && loadingTipo === 'ambos' ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="mr-2 h-4 w-4" />
+            )}
+            Exportar Ambos
           </Button>
         </div>
       </div>
@@ -209,14 +298,46 @@ export function Reportes({ userRole }: ReportesProps) {
               </Select>
             </div>
             <div className="flex items-end">
-              <Button className="w-full">
-                <Filter className="mr-2 h-4 w-4" />
-                Aplicar Filtros
+              <Button 
+                className="w-full"
+                onClick={() => handleGenerarReporte('ambos')}
+                disabled={loading}
+              >
+                {loading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Filter className="mr-2 h-4 w-4" />
+                )}
+                Generar Reporte
               </Button>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Messages */}
+      {error && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <p className="text-red-800 font-semibold">Error:</p>
+            <p className="text-red-700">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+      {success && (
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="p-4">
+            <p className="text-green-800 font-semibold">Éxito:</p>
+            <p className="text-green-700">{success}</p>
+            {archivosGenerados.excel && (
+              <p className="text-green-600 text-sm mt-2">Excel: {archivosGenerados.excel}</p>
+            )}
+            {archivosGenerados.pdf && (
+              <p className="text-green-600 text-sm">PDF: {archivosGenerados.pdf}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Results Table */}
       <Card>

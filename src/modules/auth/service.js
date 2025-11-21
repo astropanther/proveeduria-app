@@ -70,7 +70,12 @@ export function verifyToken(token) {
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET);
     return decoded;
-  } catch {
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      throw new Error('Token expirado. Por favor, inicia sesión nuevamente.');
+    } else if (error.name === 'JsonWebTokenError') {
+      throw new Error('Token inválido. Por favor, inicia sesión nuevamente.');
+    }
     throw new Error('Token inválido o expirado');
   }
 }

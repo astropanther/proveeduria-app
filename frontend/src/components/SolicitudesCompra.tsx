@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
@@ -6,64 +6,168 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
-import { Plus, Search, Eye, Trash2, Clock, CheckCircle2, XCircle, Ban } from 'lucide-react';
+import { Plus, Search, Eye, Ban, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { UserRole } from '../App';
+import { solicitudesAPI } from '../services/api';
 
 interface SolicitudesCompraProps {
   userRole: UserRole;
 }
 
 interface Solicitud {
-  id: string;
+  id: number;
   numero: string;
   descripcion: string;
   usuario: string;
-  monto: string;
+  usuarioEmail: string;
+  monto: number;
   categoria: string;
   fecha: string;
-  estado: 'pendiente' | 'aprobada' | 'rechazada' | 'anulada';
+  estado: 'Pendiente' | 'Aprobada' | 'Rechazada' | 'Anulada';
+  prioridad?: string;
+  justificacion?: string;
 }
 
-const mockSolicitudes: Solicitud[] = [
-  { id: '1', numero: 'SOL-2024-045', descripcion: 'Compra de equipos de oficina', usuario: 'Juan Pérez', monto: '$5,200', categoria: 'Equipamiento', fecha: '2024-06-15', estado: 'pendiente' },
-  { id: '2', numero: 'SOL-2024-044', descripcion: 'Software de gestión empresarial', usuario: 'Ana González', monto: '$12,800', categoria: 'Software', fecha: '2024-06-14', estado: 'aprobada' },
-  { id: '3', numero: 'SOL-2024-043', descripcion: 'Material de construcción', usuario: 'Carlos Ruiz', monto: '$8,450', categoria: 'Materiales', fecha: '2024-06-14', estado: 'aprobada' },
-  { id: '4', numero: 'SOL-2024-042', descripcion: 'Mobiliario de oficina', usuario: 'María López', monto: '$6,900', categoria: 'Mobiliario', fecha: '2024-06-13', estado: 'rechazada' },
-  { id: '5', numero: 'SOL-2024-041', descripcion: 'Equipamiento tecnológico', usuario: 'Luis Martín', monto: '$15,200', categoria: 'Tecnología', fecha: '2024-06-13', estado: 'pendiente' },
-  { id: '6', numero: 'SOL-2024-040', descripcion: 'Suministros de limpieza', usuario: 'Juan Pérez', monto: '$1,200', categoria: 'Servicios', fecha: '2024-06-12', estado: 'aprobada' },
-  { id: '7', numero: 'SOL-2024-039', descripcion: 'Herramientas de trabajo', usuario: 'Ana González', monto: '$3,450', categoria: 'Herramientas', fecha: '2024-06-11', estado: 'anulada' },
-];
-
 const estadoConfig = {
-  pendiente: { label: 'Pendiente', icon: Clock, className: 'bg-orange-100 text-orange-800' },
-  aprobada: { label: 'Aprobada', icon: CheckCircle2, className: 'bg-green-100 text-green-800' },
-  rechazada: { label: 'Rechazada', icon: XCircle, className: 'bg-red-100 text-red-800' },
-  anulada: { label: 'Anulada', icon: Ban, className: 'bg-gray-100 text-gray-800' },
+  Pendiente: { label: 'Pendiente', icon: Clock, className: 'bg-orange-100 text-orange-800' },
+  Aprobada: { label: 'Aprobada', icon: CheckCircle2, className: 'bg-green-100 text-green-800' },
+  Rechazada: { label: 'Rechazada', icon: XCircle, className: 'bg-red-100 text-red-800' },
+  Anulada: { label: 'Anulada', icon: Ban, className: 'bg-gray-100 text-gray-800' },
 };
 
+const categorias = [
+  'Equipamiento',
+  'Software',
+  'Materiales',
+  'Mobiliario',
+  'Tecnología',
+  'Servicios',
+  'Herramientas',
+];
+
+const prioridades = [
+  { value: 'alta', label: 'Alta' },
+  { value: 'media', label: 'Media' },
+  { value: 'baja', label: 'Baja' },
+];
+
 export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
-  const [solicitudes, setSolicitudes] = useState<Solicitud[]>(mockSolicitudes);
+  const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('todos');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [error, setError] = useState('');
+
+  // Form state
+  const [descripcion, setDescripcion] = useState('');
+  const [monto, setMonto] = useState('');
+  const [categoria, setCategoria] = useState('');
+  const [prioridad, setPrioridad] = useState('media');
+  const [justificacion, setJustificacion] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const canCreateSolicitud = userRole === 'admin' || userRole === 'comprador';
+
+  useEffect(() => {
+    cargarSolicitudes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterEstado]);
+
+  const cargarSolicitudes = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      console.log('Cargando solicitudes con filtro:', filterEstado);
+      const estado = filterEstado === 'todos' ? undefined : filterEstado;
+      const data = await solicitudesAPI.getAll({ estado });
+      console.log('Solicitudes recibidas:', data);
+      setSolicitudes(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error('Error al cargar solicitudes:', err);
+      setError(err.message || 'Error al cargar solicitudes');
+      setSolicitudes([]); // Asegurar que no quede undefined
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCrearSolicitud = async () => {
+    if (!descripcion || !monto || !categoria) {
+      setError('Por favor completa todos los campos requeridos');
+      return;
+    }
+
+    const montoNum = parseFloat(monto);
+    if (isNaN(montoNum) || montoNum <= 0) {
+      setError('El monto debe ser un número positivo');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError('');
+      await solicitudesAPI.create({
+        descripcion,
+        monto: montoNum,
+        categoria,
+        prioridad,
+        justificacion: justificacion || undefined,
+      });
+
+      // Reset form
+      setDescripcion('');
+      setMonto('');
+      setCategoria('');
+      setPrioridad('media');
+      setJustificacion('');
+      setIsDialogOpen(false);
+
+      // Reload solicitudes
+      await cargarSolicitudes();
+    } catch (err: any) {
+      console.error('Error al crear solicitud:', err);
+      setError(err.message || 'Error al crear solicitud');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAnular = async (id: number) => {
+    if (!confirm('¿Estás seguro de que deseas anular esta solicitud?')) {
+      return;
+    }
+
+    try {
+      await solicitudesAPI.anular(id.toString());
+      await cargarSolicitudes();
+    } catch (err: any) {
+      console.error('Error al anular solicitud:', err);
+      setError(err.message || 'Error al anular solicitud');
+    }
+  };
 
   const filteredSolicitudes = solicitudes.filter(s => {
     const matchesSearch = s.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          s.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          s.usuario.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterEstado === 'todos' || s.estado === filterEstado;
-    return matchesSearch && matchesFilter;
+    return matchesSearch;
   });
 
-  const canCreateSolicitud = userRole === 'admin' || userRole === 'comprador';
+  const estadoCounts = {
+    Pendiente: solicitudes.filter(s => s.estado === 'Pendiente').length,
+    Aprobada: solicitudes.filter(s => s.estado === 'Aprobada').length,
+    Rechazada: solicitudes.filter(s => s.estado === 'Rechazada').length,
+    Anulada: solicitudes.filter(s => s.estado === 'Anulada').length,
+  };
 
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1>Solicitudes de Compra</h1>
+          <h1 className="text-3xl font-bold">Solicitudes de Compra</h1>
           <p className="text-gray-600 mt-2">Gestión de solicitudes de compra</p>
         </div>
         {canCreateSolicitud && (
@@ -74,7 +178,7 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
                 Nueva Solicitud
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-3xl">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Nueva Solicitud de Compra</DialogTitle>
                 <DialogDescription>
@@ -84,22 +188,25 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
               <div className="space-y-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="descripcion">Descripción</Label>
-                    <Input id="descripcion" placeholder="Descripción breve de la compra" />
+                    <Label htmlFor="descripcion">Descripción *</Label>
+                    <Input
+                      id="descripcion"
+                      placeholder="Descripción breve de la compra"
+                      value={descripcion}
+                      onChange={(e) => setDescripcion(e.target.value)}
+                      disabled={submitting}
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="categoria">Categoría</Label>
-                    <Select>
+                    <Label htmlFor="categoria">Categoría *</Label>
+                    <Select value={categoria} onValueChange={setCategoria} disabled={submitting}>
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar categoría" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="equipamiento">Equipamiento</SelectItem>
-                        <SelectItem value="software">Software</SelectItem>
-                        <SelectItem value="materiales">Materiales</SelectItem>
-                        <SelectItem value="mobiliario">Mobiliario</SelectItem>
-                        <SelectItem value="tecnologia">Tecnología</SelectItem>
-                        <SelectItem value="servicios">Servicios</SelectItem>
+                        {categorias.map(cat => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -107,37 +214,30 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="proveedor">Proveedor</Label>
-                    <Input id="proveedor" placeholder="Nombre del proveedor" />
+                    <Label htmlFor="monto">Monto Total *</Label>
+                    <Input
+                      id="monto"
+                      type="number"
+                      placeholder="0.00"
+                      value={monto}
+                      onChange={(e) => setMonto(e.target.value)}
+                      disabled={submitting}
+                      min="0"
+                      step="0.01"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="monto">Monto Total</Label>
-                    <Input id="monto" type="number" placeholder="0.00" />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Items de la Solicitud</Label>
-                  <div className="border rounded-lg p-4 space-y-3">
-                    <div className="grid grid-cols-12 gap-2">
-                      <div className="col-span-5">
-                        <Input placeholder="Descripción del ítem" />
-                      </div>
-                      <div className="col-span-2">
-                        <Input placeholder="Cantidad" type="number" />
-                      </div>
-                      <div className="col-span-2">
-                        <Input placeholder="Precio Unit." type="number" />
-                      </div>
-                      <div className="col-span-2">
-                        <Input placeholder="Subtotal" disabled />
-                      </div>
-                      <div className="col-span-1">
-                        <Button variant="outline" size="sm" className="w-full">
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
+                    <Label htmlFor="prioridad">Prioridad</Label>
+                    <Select value={prioridad} onValueChange={setPrioridad} disabled={submitting}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {prioridades.map(pri => (
+                          <SelectItem key={pri.value} value={pri.value}>{pri.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -147,33 +247,59 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
                     id="justificacion"
                     placeholder="Justifica la necesidad de esta compra..."
                     rows={3}
+                    value={justificacion}
+                    onChange={(e) => setJustificacion(e.target.value)}
+                    disabled={submitting}
                   />
                 </div>
+
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                    {error}
+                  </div>
+                )}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={submitting}>
                   Cancelar
                 </Button>
-                <Button onClick={() => setIsDialogOpen(false)}>Crear Solicitud</Button>
+                <Button onClick={handleCrearSolicitud} disabled={submitting}>
+                  {submitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creando...
+                    </>
+                  ) : (
+                    'Crear Solicitud'
+                  )}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         )}
       </div>
 
+      {error && !isDialogOpen && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <p className="text-red-800">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {Object.entries(estadoConfig).map(([estado, config]) => {
           const Icon = config.icon;
-          const count = solicitudes.filter(s => s.estado === estado).length;
+          const count = estadoCounts[estado as keyof typeof estadoCounts];
           return (
             <Card key={estado}>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <Icon className="h-5 w-5 text-foreground" strokeWidth={1.5} />
                   <div>
-                    <p className="text-muted-foreground">{config.label}</p>
-                    <h3 className="mt-1">{count}</h3>
+                    <p className="text-muted-foreground text-sm">{config.label}</p>
+                    <h3 className="mt-1 text-2xl font-bold">{count}</h3>
                   </div>
                 </div>
               </CardContent>
@@ -193,10 +319,10 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos los estados</SelectItem>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
-                  <SelectItem value="aprobada">Aprobada</SelectItem>
-                  <SelectItem value="rechazada">Rechazada</SelectItem>
-                  <SelectItem value="anulada">Anulada</SelectItem>
+                  <SelectItem value="Pendiente">Pendiente</SelectItem>
+                  <SelectItem value="Aprobada">Aprobada</SelectItem>
+                  <SelectItem value="Rechazada">Rechazada</SelectItem>
+                  <SelectItem value="Anulada">Anulada</SelectItem>
                 </SelectContent>
               </Select>
               <div className="relative w-64">
@@ -212,56 +338,79 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>N° Solicitud</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead>Usuario</TableHead>
-                <TableHead>Categoría</TableHead>
-                <TableHead>Monto</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredSolicitudes.map((solicitud) => {
-                const estado = estadoConfig[solicitud.estado];
-                const IconEstado = estado.icon;
-                return (
-                  <TableRow key={solicitud.id}>
-                    <TableCell>{solicitud.numero}</TableCell>
-                    <TableCell>{solicitud.descripcion}</TableCell>
-                    <TableCell>{solicitud.usuario}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{solicitud.categoria}</Badge>
-                    </TableCell>
-                    <TableCell>{solicitud.monto}</TableCell>
-                    <TableCell>{new Date(solicitud.fecha).toLocaleDateString('es-ES')}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={estado.className}>
-                        <IconEstado className="h-3 w-3 mr-1" />
-                        {estado.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {canCreateSolicitud && solicitud.estado === 'pendiente' && (
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50">
-                            <Trash2 className="h-4 w-4" />
+          {loading ? (
+            <div className="flex flex-col justify-center items-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin mb-2" />
+              <p className="text-sm text-gray-500">Cargando solicitudes...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-red-600 mb-2">{error}</p>
+              <Button variant="outline" size="sm" onClick={cargarSolicitudes}>
+                Reintentar
+              </Button>
+            </div>
+          ) : filteredSolicitudes.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No hay solicitudes para mostrar
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>N° Solicitud</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead>Usuario</TableHead>
+                  <TableHead>Categoría</TableHead>
+                  <TableHead>Monto</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredSolicitudes.map((solicitud) => {
+                  const estado = estadoConfig[solicitud.estado];
+                  const IconEstado = estado.icon;
+                  return (
+                    <TableRow key={solicitud.id}>
+                      <TableCell className="font-medium">{solicitud.numero}</TableCell>
+                      <TableCell>{solicitud.descripcion}</TableCell>
+                      <TableCell>{solicitud.usuario}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{solicitud.categoria}</Badge>
+                      </TableCell>
+                      <TableCell>${solicitud.monto.toLocaleString('es-ES')}</TableCell>
+                      <TableCell>{new Date(solicitud.fecha).toLocaleDateString('es-ES')}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={estado.className}>
+                          <IconEstado className="h-3 w-3 mr-1" />
+                          {estado.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm">
+                            <Eye className="h-4 w-4" />
                           </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                          {canCreateSolicitud && solicitud.estado === 'Pendiente' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:bg-red-50"
+                              onClick={() => handleAnular(solicitud.id)}
+                            >
+                              <Ban className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

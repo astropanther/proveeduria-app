@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from './Header';
 import { Sidebar } from './SidebarNav';
 import { DashboardAdmin } from './dashboards/DashboardAdmin';
@@ -8,6 +8,7 @@ import { GestionUsuarios } from './GestionUsuarios';
 import { SolicitudesCompra } from './SolicitudesCompra';
 import { AprobacionSolicitudes } from './AprobacionSolicitudes';
 import { Reportes } from './Reportes';
+import { PruebaNotificaciones } from './PruebaNotificaciones';
 import { User } from '../App';
 
 interface MainLayoutProps {
@@ -17,11 +18,21 @@ interface MainLayoutProps {
   onToggleDarkMode: () => void;
 }
 
-export type View = 'dashboard' | 'usuarios' | 'solicitudes' | 'aprobaciones' | 'reportes';
+export type View = 'dashboard' | 'usuarios' | 'solicitudes' | 'aprobaciones' | 'reportes' | 'notificaciones';
 
 export function MainLayout({ user, onLogout, isDarkMode, onToggleDarkMode }: MainLayoutProps) {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    const handleViewChange = (event: CustomEvent) => {
+      setCurrentView(event.detail as View);
+    };
+    window.addEventListener('changeView', handleViewChange as EventListener);
+    return () => {
+      window.removeEventListener('changeView', handleViewChange as EventListener);
+    };
+  }, []);
 
   const renderView = () => {
     switch (currentView) {
@@ -37,6 +48,8 @@ export function MainLayout({ user, onLogout, isDarkMode, onToggleDarkMode }: Mai
         return <AprobacionSolicitudes userRole={user.rol} />;
       case 'reportes':
         return <Reportes userRole={user.rol} />;
+      case 'notificaciones':
+        return <PruebaNotificaciones userRole={user.rol} />;
       default:
         return <DashboardAdmin />;
     }

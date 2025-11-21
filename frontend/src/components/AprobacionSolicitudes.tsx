@@ -1,87 +1,34 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
-import { CheckCircle2, XCircle, Eye, Clock, AlertCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, Eye, Clock, AlertCircle, Loader2 } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { UserRole } from '../App';
+import { solicitudesAPI } from '../services/api';
 
 interface AprobacionSolicitudesProps {
   userRole: UserRole;
 }
 
 interface Solicitud {
-  id: string;
+  id: number;
   numero: string;
   descripcion: string;
   usuario: string;
-  monto: string;
+  usuarioEmail: string;
+  monto: number;
   categoria: string;
   fecha: string;
   prioridad: 'alta' | 'media' | 'baja';
   justificacion: string;
+  estado: 'Pendiente' | 'Aprobada' | 'Rechazada' | 'Anulada';
+  aprobadorJefe?: number;
+  aprobadorFinanciero?: number;
 }
-
-const mockSolicitudes: Solicitud[] = [
-  {
-    id: '1',
-    numero: 'SOL-2024-045',
-    descripcion: 'Compra de equipos de oficina',
-    usuario: 'Juan Pérez',
-    monto: '$5,200',
-    categoria: 'Equipamiento',
-    fecha: '2024-06-15',
-    prioridad: 'media',
-    justificacion: 'Se requieren nuevos equipos para el área de ventas debido al aumento de personal.',
-  },
-  {
-    id: '2',
-    numero: 'SOL-2024-044',
-    descripcion: 'Software de gestión empresarial',
-    usuario: 'Ana González',
-    monto: '$12,800',
-    categoria: 'Software',
-    fecha: '2024-06-14',
-    prioridad: 'alta',
-    justificacion: 'Sistema crítico para mejorar la eficiencia operativa del departamento.',
-  },
-  {
-    id: '3',
-    numero: 'SOL-2024-041',
-    descripcion: 'Material de construcción',
-    usuario: 'Luis Martín',
-    monto: '$15,200',
-    categoria: 'Materiales',
-    fecha: '2024-06-13',
-    prioridad: 'alta',
-    justificacion: 'Materiales urgentes para proyecto en curso con fecha límite próxima.',
-  },
-  {
-    id: '4',
-    numero: 'SOL-2024-040',
-    descripcion: 'Mobiliario de oficina',
-    usuario: 'María López',
-    monto: '$8,500',
-    categoria: 'Mobiliario',
-    fecha: '2024-06-12',
-    prioridad: 'media',
-    justificacion: 'Reemplazo de mobiliario desgastado en área administrativa.',
-  },
-  {
-    id: '5',
-    numero: 'SOL-2024-039',
-    descripcion: 'Equipamiento tecnológico',
-    usuario: 'Carlos Ruiz',
-    monto: '$22,000',
-    categoria: 'Tecnología',
-    fecha: '2024-06-11',
-    prioridad: 'alta',
-    justificacion: 'Actualización de servidores para mejorar capacidad y seguridad.',
-  },
-];
 
 const prioridadConfig = {
   alta: { label: 'Alta', className: 'bg-red-100 text-red-800' },
@@ -90,59 +37,138 @@ const prioridadConfig = {
 };
 
 export function AprobacionSolicitudes({ userRole }: AprobacionSolicitudesProps) {
-  const [solicitudes, setSolicitudes] = useState<Solicitud[]>(mockSolicitudes);
+  const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedSolicitud, setSelectedSolicitud] = useState<Solicitud | null>(null);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleApprove = () => {
-    if (selectedSolicitud) {
-      setSolicitudes(solicitudes.filter(s => s.id !== selectedSolicitud.id));
-      setShowApproveDialog(false);
-      setSelectedSolicitud(null);
+  const canApprove = userRole === 'admin' || userRole === 'aprobador_jefe' || userRole === 'aprobador_financiero';
+
+  useEffect(() => {
+    if (canApprove) {
+      cargarSolicitudes();
+    }
+  }, [canApprove]);
+
+  const cargarSolicitudes = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      console.log('Cargando solicitudes pendientes para aprobación...');
+      const data = await solicitudesAPI.getAll({ estado: 'Pendiente' });
+      console.log('Solicitudes pendientes recibidas:', data);
+      setSolicitudes(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error('Error al cargar solicitudes:', err);
+      setError(err.message || 'Error al cargar solicitudes');
+      setSolicitudes([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleReject = () => {
-    if (selectedSolicitud && motivoRechazo.trim()) {
-      setSolicitudes(solicitudes.filter(s => s.id !== selectedSolicitud.id));
+  const handleApprove = async () => {
+    if (!selectedSolicitud) return;
+
+    try {
+      setSubmitting(true);
+      setError('');
+      await solicitudesAPI.aprobar(selectedSolicitud.id.toString());
+      setShowApproveDialog(false);
+      setSelectedSolicitud(null);
+      await cargarSolicitudes();
+    } catch (err: any) {
+      console.error('Error al aprobar solicitud:', err);
+      setError(err.message || 'Error al aprobar solicitud');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!selectedSolicitud || !motivoRechazo.trim()) {
+      setError('Por favor ingresa el motivo del rechazo');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError('');
+      await solicitudesAPI.rechazar(selectedSolicitud.id.toString(), motivoRechazo);
       setShowRejectDialog(false);
       setSelectedSolicitud(null);
       setMotivoRechazo('');
+      await cargarSolicitudes();
+    } catch (err: any) {
+      console.error('Error al rechazar solicitud:', err);
+      setError(err.message || 'Error al rechazar solicitud');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const openApproveDialog = (solicitud: Solicitud) => {
     setSelectedSolicitud(solicitud);
     setShowApproveDialog(true);
+    setError('');
   };
 
   const openRejectDialog = (solicitud: Solicitud) => {
     setSelectedSolicitud(solicitud);
     setShowRejectDialog(true);
+    setMotivoRechazo('');
+    setError('');
   };
+
+  if (!canApprove) {
+    return (
+      <div className="p-8">
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <p className="text-red-800">No tienes permiso para aprobar solicitudes</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const solicitudesAltaPrioridad = solicitudes.filter(s => s.prioridad === 'alta');
+  const montoTotal = solicitudes.reduce((sum, s) => sum + s.monto, 0);
 
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h1>Aprobación de Solicitudes</h1>
+        <h1 className="text-3xl font-bold">Aprobación de Solicitudes</h1>
         <p className="text-gray-600 mt-2">Solicitudes pendientes de tu aprobación</p>
       </div>
 
+      {error && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <p className="text-red-800">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Alert */}
-      <Card className="border-orange-500 bg-orange-50">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-orange-800">
-                Tienes {solicitudes.filter(s => s.prioridad === 'alta').length} solicitudes de alta prioridad pendientes
-              </p>
+      {solicitudesAltaPrioridad.length > 0 && (
+        <Card className="border-orange-500 bg-orange-50">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-orange-800 font-medium">
+                  Tienes {solicitudesAltaPrioridad.length} solicitudes de alta prioridad pendientes
+                </p>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -151,8 +177,8 @@ export function AprobacionSolicitudes({ userRole }: AprobacionSolicitudesProps) 
             <div className="flex items-center gap-3">
               <Clock className="h-5 w-5 text-foreground" strokeWidth={1.5} />
               <div>
-                <p className="text-muted-foreground">Pendientes</p>
-                <h3 className="mt-1">{solicitudes.length}</h3>
+                <p className="text-muted-foreground text-sm">Pendientes</p>
+                <h3 className="mt-1 text-2xl font-bold">{solicitudes.length}</h3>
               </div>
             </div>
           </CardContent>
@@ -162,8 +188,8 @@ export function AprobacionSolicitudes({ userRole }: AprobacionSolicitudesProps) 
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-foreground" strokeWidth={1.5} />
               <div>
-                <p className="text-muted-foreground">Alta Prioridad</p>
-                <h3 className="mt-1">{solicitudes.filter(s => s.prioridad === 'alta').length}</h3>
+                <p className="text-muted-foreground text-sm">Alta Prioridad</p>
+                <h3 className="mt-1 text-2xl font-bold">{solicitudesAltaPrioridad.length}</h3>
               </div>
             </div>
           </CardContent>
@@ -173,8 +199,8 @@ export function AprobacionSolicitudes({ userRole }: AprobacionSolicitudesProps) 
             <div className="flex items-center gap-3">
               <CheckCircle2 className="h-5 w-5 text-foreground" strokeWidth={1.5} />
               <div>
-                <p className="text-muted-foreground">Monto Total</p>
-                <h3 className="mt-1">$63,700</h3>
+                <p className="text-muted-foreground text-sm">Monto Total</p>
+                <h3 className="mt-1 text-2xl font-bold">${montoTotal.toLocaleString('es-ES')}</h3>
               </div>
             </div>
           </CardContent>
@@ -187,106 +213,152 @@ export function AprobacionSolicitudes({ userRole }: AprobacionSolicitudesProps) 
           <CardDescription>Revisa y aprueba o rechaza las solicitudes</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>N° Solicitud</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead>Usuario</TableHead>
-                <TableHead>Monto</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Prioridad</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {solicitudes.map((solicitud) => {
-                const prioridad = prioridadConfig[solicitud.prioridad];
-                return (
-                  <TableRow key={solicitud.id}>
-                    <TableCell>{solicitud.numero}</TableCell>
-                    <TableCell>{solicitud.descripcion}</TableCell>
-                    <TableCell>{solicitud.usuario}</TableCell>
-                    <TableCell>{solicitud.monto}</TableCell>
-                    <TableCell>{new Date(solicitud.fecha).toLocaleDateString('es-ES')}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={prioridad.className}>
-                        {prioridad.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedSolicitud(solicitud);
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-green-600 hover:bg-green-50"
-                          onClick={() => openApproveDialog(solicitud)}
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:bg-red-50"
-                          onClick={() => openRejectDialog(solicitud)}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          {loading ? (
+            <div className="flex flex-col justify-center items-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin mb-2" />
+              <p className="text-sm text-muted-foreground">Cargando solicitudes...</p>
+            </div>
+          ) : solicitudes.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No hay solicitudes pendientes</p>
+              <p className="text-sm text-muted-foreground mt-2">Las solicitudes pendientes aparecerán aquí cuando estén disponibles</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>N° Solicitud</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead>Usuario</TableHead>
+                  <TableHead>Categoría</TableHead>
+                  <TableHead>Monto</TableHead>
+                  <TableHead>Prioridad</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {solicitudes.map((solicitud) => {
+                  const prioridad = prioridadConfig[solicitud.prioridad] || prioridadConfig.media;
+                  return (
+                    <TableRow key={solicitud.id}>
+                      <TableCell className="font-medium">{solicitud.numero}</TableCell>
+                      <TableCell>{solicitud.descripcion}</TableCell>
+                      <TableCell>{solicitud.usuario}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{solicitud.categoria}</Badge>
+                      </TableCell>
+                      <TableCell>${solicitud.monto.toLocaleString('es-ES')}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={prioridad.className}>
+                          {prioridad.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{new Date(solicitud.fecha).toLocaleDateString('es-ES')}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => openApproveDialog(solicitud)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-green-600 hover:bg-green-50"
+                            onClick={() => openApproveDialog(solicitud)}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:bg-red-50"
+                            onClick={() => openRejectDialog(solicitud)}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
       {/* Approve Dialog */}
       <Dialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Aprobar Solicitud</DialogTitle>
             <DialogDescription>
-              ¿Estás seguro de que deseas aprobar esta solicitud?
+              Revisa los detalles de la solicitud antes de aprobarla
             </DialogDescription>
           </DialogHeader>
           {selectedSolicitud && (
-            <div className="space-y-3 py-4">
-              <div>
-                <p className="text-gray-600">Número de Solicitud:</p>
-                <p>{selectedSolicitud.numero}</p>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">N° Solicitud</Label>
+                  <p className="font-medium">{selectedSolicitud.numero}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Usuario</Label>
+                  <p className="font-medium">{selectedSolicitud.usuario}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Categoría</Label>
+                  <p className="font-medium">{selectedSolicitud.categoria}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Monto</Label>
+                  <p className="font-medium">${selectedSolicitud.monto.toLocaleString('es-ES')}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Prioridad</Label>
+                  <Badge variant="secondary" className={prioridadConfig[selectedSolicitud.prioridad].className}>
+                    {prioridadConfig[selectedSolicitud.prioridad].label}
+                  </Badge>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Fecha</Label>
+                  <p className="font-medium">{new Date(selectedSolicitud.fecha).toLocaleDateString('es-ES')}</p>
+                </div>
               </div>
               <div>
-                <p className="text-gray-600">Descripción:</p>
-                <p>{selectedSolicitud.descripcion}</p>
+                <Label className="text-muted-foreground">Descripción</Label>
+                <p className="mt-1">{selectedSolicitud.descripcion}</p>
               </div>
-              <div>
-                <p className="text-gray-600">Monto:</p>
-                <p>{selectedSolicitud.monto}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Justificación:</p>
-                <p className="bg-gray-50 p-3 rounded-lg mt-1">{selectedSolicitud.justificacion}</p>
-              </div>
+              {selectedSolicitud.justificacion && (
+                <div>
+                  <Label className="text-muted-foreground">Justificación</Label>
+                  <p className="mt-1">{selectedSolicitud.justificacion}</p>
+                </div>
+              )}
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                  {error}
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowApproveDialog(false)}>
+            <Button variant="outline" onClick={() => setShowApproveDialog(false)} disabled={submitting}>
               Cancelar
             </Button>
-            <Button onClick={handleApprove} className="bg-green-600 hover:bg-green-700">
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              Aprobar
+            <Button onClick={handleApprove} disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Aprobando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Aprobar
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -294,46 +366,67 @@ export function AprobacionSolicitudes({ userRole }: AprobacionSolicitudesProps) 
 
       {/* Reject Dialog */}
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Rechazar Solicitud</DialogTitle>
             <DialogDescription>
-              Por favor indica el motivo del rechazo
+              Indica el motivo del rechazo de la solicitud
             </DialogDescription>
           </DialogHeader>
           {selectedSolicitud && (
             <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">N° Solicitud</Label>
+                  <p className="font-medium">{selectedSolicitud.numero}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Monto</Label>
+                  <p className="font-medium">${selectedSolicitud.monto.toLocaleString('es-ES')}</p>
+                </div>
+              </div>
               <div>
-                <p className="text-gray-600">Número de Solicitud:</p>
-                <p>{selectedSolicitud.numero}</p>
+                <Label className="text-muted-foreground">Descripción</Label>
+                <p className="mt-1">{selectedSolicitud.descripcion}</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="motivo">Motivo del Rechazo *</Label>
+                <Label htmlFor="motivo">Motivo del rechazo *</Label>
                 <Textarea
                   id="motivo"
                   placeholder="Explica por qué se rechaza esta solicitud..."
+                  rows={4}
                   value={motivoRechazo}
                   onChange={(e) => setMotivoRechazo(e.target.value)}
-                  rows={4}
-                  required
+                  disabled={submitting}
                 />
               </div>
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                  {error}
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setShowRejectDialog(false);
-              setMotivoRechazo('');
-            }}>
+            <Button variant="outline" onClick={() => setShowRejectDialog(false)} disabled={submitting}>
               Cancelar
             </Button>
             <Button
+              variant="destructive"
               onClick={handleReject}
-              className="bg-red-600 hover:bg-red-700"
-              disabled={!motivoRechazo.trim()}
+              disabled={submitting || !motivoRechazo.trim()}
             >
-              <XCircle className="h-4 w-4 mr-2" />
-              Rechazar
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Rechazando...
+                </>
+              ) : (
+                <>
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Rechazar
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

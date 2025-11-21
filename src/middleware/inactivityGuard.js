@@ -11,8 +11,7 @@
 const lastActivity = new Map();
 
 // Tiempo máximo de inactividad en milisegundos (30 minutos por defecto)
-// Para pruebas: cambiar a 1 minuto (60000) o 30 segundos (30000)
-const MAX_INACTIVITY_TIME = 30 * 1000; // 30 segundos para pruebas (cambiar a 30 * 60 * 1000 para producción)
+const MAX_INACTIVITY_TIME = 30 * 60 * 1000; // 30 minutos
 
 /**
  * Middleware para verificar inactividad del usuario

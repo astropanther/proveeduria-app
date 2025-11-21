@@ -36,6 +36,14 @@ async function request<T>(
     try {
       const error = await response.json();
       errorMessage = error.error || error.message || errorMessage;
+      
+      // Si el error es de token expirado o inválido, limpiar localStorage
+      if (response.status === 401 && (errorMessage.includes('Token') || errorMessage.includes('Sesión expirada') || errorMessage.includes('expirado'))) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        // Recargar la página para redirigir al login
+        window.location.href = '/';
+      }
     } catch {
       // Si no es JSON, intentar leer como texto
       try {
@@ -108,34 +116,174 @@ export const usersAPI = {
   },
 };
 
-// Solicitudes API (placeholder - implementar cuando esté listo)
+// Solicitudes API (PB-10, PB-11, PB-12)
 export const solicitudesAPI = {
-  getAll: async () => {
-    return request<any[]>('/solicitudes');
+  getAll: async (filtros?: { estado?: string; usuarioId?: number }) => {
+    const params = new URLSearchParams();
+    if (filtros?.estado) params.append('estado', filtros.estado);
+    if (filtros?.usuarioId) params.append('usuarioId', filtros.usuarioId.toString());
+    const query = params.toString();
+    return request<any[]>(`/solicitudes${query ? `?${query}` : ''}`);
   },
-
-  getById: async (id: number) => {
+  getById: async (id: string) => {
     return request<any>(`/solicitudes/${id}`);
   },
-
-  create: async (solicitudData: any) => {
+  create: async (data: {
+    descripcion: string;
+    monto: number;
+    categoria: string;
+    prioridad?: string;
+    justificacion?: string;
+  }) => {
     return request<any>('/solicitudes', {
       method: 'POST',
-      body: JSON.stringify(solicitudData),
+      body: JSON.stringify(data),
+    });
+  },
+  aprobar: async (id: string) => {
+    return request<any>(`/solicitudes/${id}/aprobar`, {
+      method: 'POST',
+    });
+  },
+  rechazar: async (id: string, motivo: string) => {
+    return request<any>(`/solicitudes/${id}/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    });
+  },
+  anular: async (id: string) => {
+    return request<any>(`/solicitudes/${id}/anular`, {
+      method: 'POST',
     });
   },
 };
 
-// Reportes API (placeholder - implementar cuando esté listo)
+// Notificaciones API (PB-13)
+export const notificacionesAPI = {
+  enviar: async (email: string, evento: string) => {
+    return request<{ enviado: boolean; modo?: string; email: string; evento: string }>('/notificaciones', {
+      method: 'POST',
+      body: JSON.stringify({ email, evento }),
+    });
+  },
+};
+
+// Reportes API (PB-14)
 export const reportesAPI = {
-  getByFilters: async (filters: { estado?: string; fechaInicio?: string; fechaFin?: string }) => {
-    const params = new URLSearchParams();
-    if (filters.estado) params.append('estado', filters.estado);
-    if (filters.fechaInicio) params.append('fechaInicio', filters.fechaInicio);
-    if (filters.fechaFin) params.append('fechaFin', filters.fechaFin);
+  generar: async (filters: { 
+    estado?: string; 
+    fechaInicio?: string; 
+    fechaFin?: string;
+    formato?: 'excel' | 'pdf' | 'ambos';
+  }) => {
+    return request<{ 
+      message: string; 
+      total: number; 
+      archivos: { excel?: string; pdf?: string };
+      filtros: any;
+    }>('/reportes', {
+      method: 'POST',
+      body: JSON.stringify(filters),
+    });
+  },
+
+  descargar: async (archivo: string) => {
+    const token = getToken();
     
-    const query = params.toString();
-    return request<any[]>(`/reportes${query ? `?${query}` : ''}`);
+    if (!token) {
+      throw new Error('No hay token de autenticación. Por favor inicia sesión.');
+    }
+    
+    console.log('Iniciando descarga de:', archivo);
+    console.log('URL:', `${API_BASE_URL}/reportes/descargar/${encodeURIComponent(archivo)}`);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/reportes/descargar/${encodeURIComponent(archivo)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        let errorMessage = 'Error al descargar archivo';
+        try {
+          const error = JSON.parse(errorText);
+          errorMessage = error.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+      
+      const blob = await response.blob();
+      console.log('Blob recibido, tamaño:', blob.size, 'bytes');
+      
+      if (blob.size === 0) {
+        throw new Error('El archivo está vacío');
+      }
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = archivo;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      
+      // Limpiar después de un delay
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        console.log('Descarga completada');
+      }, 100);
+    } catch (error: any) {
+      console.error('Error en descarga:', error);
+      throw error;
+    }
+  },
+};
+
+// Dashboard API (PB-22)
+export const dashboardAPI = {
+  getResumen: async () => {
+    return request<{
+      solicitudes: {
+        total: number;
+        pendientes: number;
+        aprobadas: number;
+        rechazadas: number;
+        anuladas: number;
+        montoTotal: number;
+        montoPendiente: number;
+        montoAprobado: number;
+      };
+      usuarios: {
+        total: number;
+        activos: number;
+      };
+    }>('/dashboard/resumen');
+  },
+  getEstadisticas: async () => {
+    return request<Array<{
+      mes: string;
+      total: number;
+      aprobadas: number;
+      rechazadas: number;
+    }>>('/dashboard/estadisticas');
+  },
+  getRecientes: async (limite: number = 5) => {
+    return request<Array<{
+      id: string;
+      usuario: string;
+      monto: string;
+      fecha: string;
+      estado: string;
+    }>>(`/dashboard/recientes?limite=${limite}`);
   },
 };
 

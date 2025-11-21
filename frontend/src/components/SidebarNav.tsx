@@ -5,6 +5,7 @@ import {
   FileText,
   CheckSquare,
   BarChart3,
+  Mail,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -56,6 +57,12 @@ const menuItems: MenuItem[] = [
     label: 'Reportes',
     icon: BarChart3,
     roles: ['admin', 'aprobador_financiero'],
+  },
+  {
+    id: 'notificaciones',
+    label: 'Notificaciones',
+    icon: Mail,
+    roles: ['admin', 'comprador', 'aprobador_jefe', 'aprobador_financiero'],
   },
 ];
 

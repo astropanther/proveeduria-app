@@ -5,19 +5,23 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-  "dev": "nodemon src/index.js",
-  "lint": "eslint \"src/**/*.js\"",
-  "start": "node src/index.js"
- },
+    "dev": "nodemon src/index.js",
+    "lint": "eslint \"src/**/*.js\"",
+    "start": "node src/index.js",
+    "seed:db": "node scripts/seedDatabase.js"
+  },
   "keywords": [],
   "author": "Roxy",
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mssql": "^12.1.0"
+    "mssql": "^12.1.0",
+    "nodemailer": "^7.0.10",
+    "pdfkit": "^0.17.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
