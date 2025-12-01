@@ -104,6 +104,7 @@ export async function createSolicitud(solicitudData) {
         numero, descripcion, usuario_id, monto, categoria, fecha,
         estado, prioridad, justificacion, fecha_creacion
       )
+      OUTPUT INSERTED.*
       VALUES (
         @numero, @descripcion, @usuarioId, @monto, @categoria, @fecha,
         @estado, @prioridad, @justificacion, GETDATE()
@@ -122,14 +123,8 @@ export async function createSolicitud(solicitudData) {
       justificacion: solicitudData.justificacion || null,
     };
 
-    await query(sqlQuery, params);
-    
-    // Obtener la solicitud recién creada usando el número
-    const createdResult = await query(
-      `SELECT * FROM solicitudes WHERE numero = @numero`,
-      { numero }
-    );
-    const created = createdResult.recordset[0];
+    const result = await query(sqlQuery, params);
+    const created = result.recordset[0];
     
     if (!created) {
       throw new Error('No se pudo crear la solicitud');

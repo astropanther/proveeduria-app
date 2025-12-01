@@ -20,8 +20,8 @@ import { inactivityGuard } from '../../../middleware/inactivityGuard.js';
 const router = express.Router();
 
 // Todas las rutas requieren autenticación
-router.use(authGuard([]));
-router.use(inactivityGuard);
+router.use(authGuard());
+router.use(inactivityGuard());
 
 // PB-10: Crear solicitud (compradores y admin)
 router.post('/', authGuard(['Comprador', 'Administrador']), crearSolicitud);

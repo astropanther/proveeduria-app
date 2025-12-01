@@ -47,7 +47,7 @@ export async function crearSolicitud(req, res) {
 
     // Registrar actividad
     await registrarActividad({
-      usuarioId: userId,
+      usuarioId: usuarioId,
       accion: 'CREAR_SOLICITUD',
       entidad: 'Solicitud',
       entidadId: nuevaSolicitud.id,
