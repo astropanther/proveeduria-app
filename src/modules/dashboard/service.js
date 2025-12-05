@@ -114,7 +114,7 @@ export async function obtenerSolicitudesRecientes(limite = 5) {
         s.id,
         s.numero,
         s.monto,
-        s.fecha,
+        s.fecha_creacion,
         s.estado,
         u.nombre AS usuario
       FROM solicitudes s
@@ -123,13 +123,26 @@ export async function obtenerSolicitudesRecientes(limite = 5) {
     `;
 
     const result = await query(sql, { limite });
-    return result.recordset.map(row => ({
-      id: row.id ? row.id.toString() : row.numero,
-      usuario: row.usuario || 'N/A',
-      monto: `$${parseFloat(row.monto || 0).toLocaleString('es-ES')}`,
-      fecha: row.fecha ? (row.fecha.toISOString ? row.fecha.toISOString().split('T')[0] : row.fecha) : '',
-      estado: (row.estado || '').toLowerCase(),
-    }));
+    return result.recordset.map(row => {
+      // Formatear fecha usando fecha_creacion (fecha real de creación)
+      let fechaFormateada = '';
+      if (row.fecha_creacion) {
+        const fecha = new Date(row.fecha_creacion);
+        // Usar fecha local sin conversión de zona horaria
+        const year = fecha.getFullYear();
+        const month = String(fecha.getMonth() + 1).padStart(2, '0');
+        const day = String(fecha.getDate()).padStart(2, '0');
+        fechaFormateada = `${year}-${month}-${day}`;
+      }
+      
+      return {
+        id: row.id ? row.id.toString() : row.numero,
+        usuario: row.usuario || 'N/A',
+        monto: `$${parseFloat(row.monto || 0).toLocaleString('es-ES')}`,
+        fecha: fechaFormateada,
+        estado: (row.estado || '').toLowerCase(),
+      };
+    });
   } catch (error) {
     console.error('Error al obtener solicitudes recientes:', error);
     return [];

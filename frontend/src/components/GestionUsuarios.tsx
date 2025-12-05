@@ -84,6 +84,11 @@ export function GestionUsuarios() {
     rol: 'comprador',
   });
   const [updating, setUpdating] = useState(false);
+  const [editPasswordStrength, setEditPasswordStrength] = useState<any>(null);
+  const [editSuccess, setEditSuccess] = useState('');
+  const [editError, setEditError] = useState('');
+  const [createPasswordStrength, setCreatePasswordStrength] = useState<any>(null);
+  const [createError, setCreateError] = useState('');
 
   // Cargar usuarios al montar
   useEffect(() => {
@@ -119,6 +124,16 @@ export function GestionUsuarios() {
       setCreating(true);
       setError('');
       setSuccess('');
+      setCreateError('');
+
+      // Validar contraseña
+      if (formData.password.length > 0) {
+        const strength = validatePasswordStrength(formData.password);
+        if (strength.score < 40) {
+          setCreateError(strength.error || 'La contraseña es demasiado débil');
+          return;
+        }
+      }
 
       await usersAPI.create({
         email: formData.email,
@@ -130,9 +145,12 @@ export function GestionUsuarios() {
       setSuccess('Usuario creado exitosamente');
       setIsDialogOpen(false);
       setFormData({ nombre: '', email: '', password: '', rol: 'comprador' });
+      setCreatePasswordStrength(null);
       await loadUsuarios();
     } catch (err: any) {
-      setError(err.message || 'Error al crear usuario');
+      const errorMsg = err.message || 'Error al crear usuario';
+      setError(errorMsg);
+      setCreateError(errorMsg);
     } finally {
       setCreating(false);
     }
@@ -156,6 +174,16 @@ export function GestionUsuarios() {
       setUpdating(true);
       setError('');
       setSuccess('');
+      setEditError('');
+
+      // Validar contraseña si se está cambiando
+      if (editFormData.password && editFormData.password.length > 0) {
+        const strength = validatePasswordStrength(editFormData.password);
+        if (strength.score < 40) {
+          setEditError(strength.error || 'La contraseña es demasiado débil');
+          return;
+        }
+      }
 
       const updateData: any = {
         nombre: editFormData.nombre,
@@ -170,13 +198,19 @@ export function GestionUsuarios() {
 
       await usersAPI.update(parseInt(editingUser.id), updateData);
 
-      setSuccess('Usuario actualizado exitosamente');
-      setIsEditDialogOpen(false);
-      setEditingUser(null);
-      setEditFormData({ nombre: '', email: '', password: '', rol: 'comprador' });
-      await loadUsuarios();
+      setEditSuccess('Usuario actualizado exitosamente');
+      setTimeout(() => {
+        setIsEditDialogOpen(false);
+        setEditingUser(null);
+        setEditFormData({ nombre: '', email: '', password: '', rol: 'comprador' });
+        setEditPasswordStrength(null);
+        setEditSuccess('');
+        loadUsuarios();
+      }, 1500);
     } catch (err: any) {
-      setError(err.message || 'Error al actualizar usuario');
+      const errorMsg = err.message || 'Error al actualizar usuario';
+      setError(errorMsg);
+      setEditError(errorMsg);
     } finally {
       setUpdating(false);
     }
@@ -184,9 +218,11 @@ export function GestionUsuarios() {
 
   const handleToggleActivo = async (usuario: Usuario) => {
     try {
-      await usersAPI.update(parseInt(usuario.id), {
-        activo: !usuario.activo,
-      });
+      if (usuario.activo) {
+        await usersAPI.inactivate(parseInt(usuario.id));
+      } else {
+        await usersAPI.activate(parseInt(usuario.id));
+      }
       await loadUsuarios();
       setSuccess(`Usuario ${usuario.activo ? 'inactivado' : 'activado'} exitosamente`);
     } catch (err: any) {
@@ -261,8 +297,36 @@ export function GestionUsuarios() {
                   type="password" 
                   placeholder="••••••••"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={(e) => {
+                    const newPassword = e.target.value;
+                    setFormData({ ...formData, password: newPassword });
+                    if (newPassword.length > 0) {
+                      setCreatePasswordStrength(validatePasswordStrength(newPassword));
+                    } else {
+                      setCreatePasswordStrength(null);
+                    }
+                    setCreateError('');
+                  }}
                 />
+                {createPasswordStrength && (
+                  <div className="space-y-1">
+                    <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all ${
+                          createPasswordStrength.color === 'red' ? 'bg-red-500' :
+                          createPasswordStrength.color === 'orange' ? 'bg-orange-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${createPasswordStrength.score}%` }}
+                      />
+                    </div>
+                    {createPasswordStrength.error && (
+                      <p className="text-xs text-red-600">{createPasswordStrength.error}</p>
+                    )}
+                  </div>
+                )}
+                {createError && (
+                  <p className="text-xs text-red-600">{createError}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="rol">Rol del Usuario</Label>
@@ -299,11 +363,23 @@ export function GestionUsuarios() {
                 </Select>
               </div>
             </div>
+            {createError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{createError}</span>
+                </div>
+              </div>
+            )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={creating}>
+              <Button variant="outline" onClick={() => {
+                setIsDialogOpen(false);
+                setCreateError('');
+                setCreatePasswordStrength(null);
+              }} disabled={creating}>
                 Cancelar
               </Button>
-              <Button onClick={handleCreateUser} disabled={creating}>
+              <Button onClick={handleCreateUser} disabled={creating || (formData.password.length > 0 && createPasswordStrength && createPasswordStrength.score < 40)}>
                 {creating ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -515,11 +591,41 @@ export function GestionUsuarios() {
                 type="password" 
                 placeholder="Dejar vacío para mantener la actual"
                 value={editFormData.password}
-                onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
+                onChange={(e) => {
+                  const newPassword = e.target.value;
+                  setEditFormData({ ...editFormData, password: newPassword });
+                  if (newPassword.length > 0) {
+                    setEditPasswordStrength(validatePasswordStrength(newPassword));
+                  } else {
+                    setEditPasswordStrength(null);
+                  }
+                  setEditError('');
+                }}
               />
-              <p className="text-xs text-muted-foreground">
-                Solo completa este campo si deseas cambiar la contraseña
-              </p>
+              {editPasswordStrength && (
+                <div className="space-y-1">
+                  <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all ${
+                        editPasswordStrength.color === 'red' ? 'bg-red-500' :
+                        editPasswordStrength.color === 'orange' ? 'bg-orange-500' : 'bg-green-500'
+                      }`}
+                      style={{ width: `${editPasswordStrength.score}%` }}
+                    />
+                  </div>
+                  {editPasswordStrength.error && (
+                    <p className="text-xs text-red-600">{editPasswordStrength.error}</p>
+                  )}
+                </div>
+              )}
+              {editError && (
+                <p className="text-xs text-red-600">{editError}</p>
+              )}
+              {!editPasswordStrength && (
+                <p className="text-xs text-muted-foreground">
+                  Solo completa este campo si deseas cambiar la contraseña
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-rol">Rol del Usuario</Label>
@@ -556,11 +662,32 @@ export function GestionUsuarios() {
               </Select>
             </div>
           </div>
+          {editError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{editError}</span>
+              </div>
+            </div>
+          )}
+          {editSuccess && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{editSuccess}</span>
+              </div>
+            </div>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={updating}>
+            <Button variant="outline" onClick={() => {
+              setIsEditDialogOpen(false);
+              setEditError('');
+              setEditSuccess('');
+              setEditPasswordStrength(null);
+            }} disabled={updating}>
               Cancelar
             </Button>
-            <Button onClick={handleUpdateUser} disabled={updating}>
+            <Button onClick={handleUpdateUser} disabled={updating || (editFormData.password.length > 0 && editPasswordStrength && editPasswordStrength.score < 40)}>
               {updating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

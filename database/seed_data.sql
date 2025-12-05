@@ -7,13 +7,13 @@ GO
 -- Nota: Las contraseñas están hasheadas con bcrypt. Para generar nuevas:
 -- node scripts/generatePasswordHash.js
 
--- Admin (password: admin123)
+-- Admin (password: Admin2024!Secure)
 IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@proveeduria.com')
 BEGIN
     INSERT INTO users (email, password_hash, role, nombre, activo, created_at)
     VALUES (
         'admin@proveeduria.com',
-        '$2b$10$RPLxD/Cc23t/dEDv7kIdMu5y3qMwnHSNWnlK7mdaSQysLCgnbZ/0C',
+        '$2b$10$nxBCrmndj9u3Q9RRrfVIxeD416tFdJ/P0aGfIbYtNyUVDS30y0qxq',
         'Administrador',
         'Administrador',
         1,
@@ -22,13 +22,13 @@ BEGIN
 END
 GO
 
--- Comprador 1 (password: comprador123)
+-- Comprador 1 (password: Comprador2024!Secure)
 IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'comprador1@proveeduria.com')
 BEGIN
     INSERT INTO users (email, password_hash, role, nombre, activo, created_at)
     VALUES (
         'comprador1@proveeduria.com',
-        '$2b$10$blyYrWI/WGuBaqNMS6SPFu3fDIodmGR1pzxAvsQbNGR1zCAGa0DOS',
+        '$2b$10$j0g4Lm/dZCmgIYQoMd3GceDsxWo.2jrQnGdk6KfdTyOeyhH8wXg4S',
         'Comprador',
         'Juan Pérez',
         1,
@@ -37,13 +37,13 @@ BEGIN
 END
 GO
 
--- Comprador 2 (password: comprador123)
+-- Comprador 2 (password: Comprador2024!Secure)
 IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'comprador2@proveeduria.com')
 BEGIN
     INSERT INTO users (email, password_hash, role, nombre, activo, created_at)
     VALUES (
         'comprador2@proveeduria.com',
-        '$2b$10$blyYrWI/WGuBaqNMS6SPFu3fDIodmGR1pzxAvsQbNGR1zCAGa0DOS',
+        '$2b$10$j0g4Lm/dZCmgIYQoMd3GceDsxWo.2jrQnGdk6KfdTyOeyhH8wXg4S',
         'Comprador',
         'María González',
         1,
@@ -52,13 +52,13 @@ BEGIN
 END
 GO
 
--- Aprobador Jefe (password: aprobador123)
+-- Aprobador Jefe (password: Aprobador2024!Secure)
 IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'aprobador1@proveeduria.com')
 BEGIN
     INSERT INTO users (email, password_hash, role, nombre, activo, created_at)
     VALUES (
         'aprobador1@proveeduria.com',
-        '$2b$10$HREFOSjdv9p.CSvW8yY7WOIcf/jHCkHFBgeecI75KgogdEBuy.Y.m',
+        '$2b$10$LwPoVjQ9n1PtCsvNG6fgCubgFcChSo6raPK2PyFRX3krwlDLFiyHi',
         'Aprobador Jefe',
         'Carlos Rodríguez',
         1,
@@ -67,13 +67,13 @@ BEGIN
 END
 GO
 
--- Aprobador Financiero (password: aprobador123)
+-- Aprobador Financiero (password: Aprobador2024!Secure)
 IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'aprobador2@proveeduria.com')
 BEGIN
     INSERT INTO users (email, password_hash, role, nombre, activo, created_at)
     VALUES (
         'aprobador2@proveeduria.com',
-        '$2b$10$HREFOSjdv9p.CSvW8yY7WOIcf/jHCkHFBgeecI75KgogdEBuy.Y.m',
+        '$2b$10$LwPoVjQ9n1PtCsvNG6fgCubgFcChSo6raPK2PyFRX3krwlDLFiyHi',
         'Aprobador Financiero',
         'Ana Martínez',
         1,

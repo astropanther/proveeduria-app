@@ -30,34 +30,74 @@ function getTransporter() {
  * Envía una notificación por email
  * @param {string} email - Email del destinatario
  * @param {string} evento - Tipo de evento (creacion, aprobacion, rechazo, anulacion)
+ * @param {object} detalles - Detalles adicionales (folio, motivo, aprobador, etc.)
+ * @param {string} tipo - Tipo de notificación: 'comprador' (general) o 'admin' (específica)
  * @returns {Promise<object>} Resultado de la operación
  */
-export async function enviarNotificacion(email, evento) {
-  const mensajes = {
-    creacion: 'Tu solicitud ha sido creada correctamente.',
-    aprobacion: '¡Tu solicitud ha sido aprobada!',
-    rechazo: 'Lo sentimos, tu solicitud fue rechazada.',
-    anulacion: 'Tu solicitud ha sido anulada.',
-  };
+export async function enviarNotificacion(email, evento, detalles = {}, tipo = 'comprador') {
+  let mensaje = '';
+  let asunto = '';
 
-  const asuntos = {
-    creacion: 'Solicitud Creada',
-    aprobacion: 'Solicitud Aprobada',
-    rechazo: 'Solicitud Rechazada',
-    anulacion: 'Solicitud Anulada',
-  };
+  if (tipo === 'comprador') {
+    // Notificaciones generales para compradores
+    const mensajes = {
+      creacion: 'Tu solicitud ha sido creada correctamente.',
+      aprobacion: '¡Tu solicitud ha sido aprobada!',
+      rechazo: detalles.motivo 
+        ? `Lo sentimos, tu solicitud fue rechazada. Motivo: ${detalles.motivo}`
+        : 'Lo sentimos, tu solicitud fue rechazada.',
+      anulacion: 'Tu solicitud ha sido anulada.',
+    };
+
+    const asuntos = {
+      creacion: 'Solicitud Creada',
+      aprobacion: 'Solicitud Aprobada',
+      rechazo: 'Solicitud Rechazada',
+      anulacion: 'Solicitud Anulada',
+    };
+
+    mensaje = mensajes[evento] || 'Notificación del sistema.';
+    asunto = asuntos[evento] || 'Notificación';
+  } else {
+    // Notificaciones específicas para admin/aprobadores
+    const mensajes = {
+      nueva_solicitud: detalles.usuario && detalles.descripcion
+        ? `${detalles.usuario} ha creado una nueva solicitud: "${detalles.descripcion}" (${detalles.numero || ''})`
+        : 'Nueva solicitud creada',
+      aprobada: detalles.aprobador && detalles.numero
+        ? `${detalles.aprobador} aprobó la solicitud ${detalles.numero}`
+        : 'Una solicitud ha sido aprobada',
+      rechazada: detalles.aprobador && detalles.numero
+        ? `${detalles.aprobador} rechazó la solicitud ${detalles.numero}${detalles.motivo ? `. Motivo: ${detalles.motivo}` : ''}`
+        : 'Una solicitud ha sido rechazada',
+      anulada: detalles.usuario && detalles.numero
+        ? `${detalles.usuario} anuló la solicitud ${detalles.numero}`
+        : 'Una solicitud ha sido anulada',
+      contacto: detalles.solicitudNumero && detalles.mensaje
+        ? `Un comprador tiene una duda sobre la solicitud ${detalles.solicitudNumero}: "${detalles.mensaje}"`
+        : 'Un usuario tiene una duda sobre una solicitud',
+    };
+
+    const asuntos = {
+      nueva_solicitud: 'Nueva Solicitud Creada',
+      aprobada: 'Solicitud Aprobada',
+      rechazada: 'Solicitud Rechazada',
+      anulada: 'Solicitud Anulada',
+      contacto: 'Consulta de Usuario',
+    };
+
+    mensaje = mensajes[evento] || 'Notificación del sistema.';
+    asunto = asuntos[evento] || 'Notificación';
+  }
 
   // Si no hay configuración de email, solo loguear (para desarrollo)
   if (!env.MAIL_USER || !env.MAIL_PASSWORD) {
-    console.log(`[NOTIFICACIÓN] Email a ${email}: ${mensajes[evento] || 'Evento desconocido'}`);
-    return { enviado: false, modo: 'desarrollo', email, evento };
+    console.log(`[NOTIFICACIÓN ${tipo.toUpperCase()}] Email a ${email}: ${mensaje}`);
+    return { enviado: false, modo: 'desarrollo', email, evento, tipo };
   }
 
   try {
     const mailTransporter = getTransporter();
-
-    const mensaje = mensajes[evento] || 'Notificación del sistema.';
-    const asunto = asuntos[evento] || 'Notificación';
 
     await mailTransporter.sendMail({
       from: env.MAIL_USER,
@@ -66,7 +106,7 @@ export async function enviarNotificacion(email, evento) {
       text: mensaje,
     });
 
-    return { enviado: true, email, evento };
+    return { enviado: true, email, evento, tipo };
   } catch (error) {
     console.error('Error al enviar notificación:', error);
     throw new Error(`Error al enviar notificación: ${error.message}`);

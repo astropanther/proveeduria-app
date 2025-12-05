@@ -13,6 +13,8 @@ import {
   aprobarSolicitud,
   rechazarSolicitud,
   anularSolicitud,
+  deshacerRechazo,
+  deshacerAprobacion,
 } from '../controller.js';
 import { authGuard } from '../../../middleware/authGuard.js';
 import { inactivityGuard } from '../../../middleware/inactivityGuard.js';
@@ -40,6 +42,12 @@ router.post('/:id/rechazar', authGuard(['Aprobador Jefe', 'Aprobador Financiero'
 
 // PB-12: Anular solicitud (solo el creador o admin)
 router.post('/:id/anular', anularSolicitud);
+
+// Deshacer rechazo (solo dentro de 15 minutos, solo admin)
+router.post('/:id/deshacer-rechazo', authGuard(['Administrador']), deshacerRechazo);
+
+// Deshacer aprobación (solo dentro de 15 minutos, quien aprobó o admin)
+router.post('/:id/deshacer-aprobacion', authGuard(['Aprobador Jefe', 'Aprobador Financiero', 'Administrador']), deshacerAprobacion);
 
 export default router;
 

@@ -155,12 +155,11 @@ export function LoginPage({ onLogin, isDarkMode, onToggleDarkMode }: LoginPagePr
             </form>
 
             <div className="pt-6 border-t border-border">
-              <p className="text-muted-foreground text-[0.65rem] uppercase tracking-[0.2em] mb-4">Usuario de prueba:</p>
+              <p className="text-muted-foreground text-[0.65rem] uppercase tracking-[0.2em] mb-4">Usuarios de prueba:</p>
               <div className="space-y-2 text-muted-foreground text-[0.7rem] font-mono">
                 <p>admin@proveeduria.com / admin123</p>
-                <p className="text-[0.6rem] text-muted-foreground/70 mt-2">
-                  (Ejecuta POST /api/auth/init para crear el usuario admin)
-                </p>
+                <p>comprador1@proveeduria.com / comprador123</p>
+                <p>aprobador1@proveeduria.com / aprobador123</p>
               </div>
             </div>
           </CardContent>

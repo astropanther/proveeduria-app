@@ -117,16 +117,16 @@ export function DashboardAprobador({ rol }: DashboardAprobadorProps) {
         {statsCards.map((stat, index) => {
           const Icon = stat.icon;
           return (
-            <Card key={index}>
+            <Card key={index} className="border border-border bg-card">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-gray-600">{stat.title}</p>
-                    <h2 className="mt-2">{stat.value}</h2>
-                    <p className="text-gray-500 mt-1">{stat.change}</p>
+                    <p className="text-muted-foreground text-sm">{stat.title}</p>
+                    <h2 className="mt-2 text-2xl font-bold text-card-foreground">{stat.value}</h2>
+                    <p className="text-muted-foreground text-xs mt-1">{stat.change}</p>
                   </div>
-                  <div className={`${stat.bgColor} ${stat.color} p-4 rounded-lg`}>
-                    <Icon className="h-6 w-6" />
+                  <div className="p-3 rounded-lg border border-border">
+                    <Icon className="h-6 w-6 text-foreground" strokeWidth={1.5} />
                   </div>
                 </div>
               </CardContent>

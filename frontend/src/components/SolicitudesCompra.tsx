@@ -59,6 +59,11 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('todos');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [selectedSolicitud, setSelectedSolicitud] = useState<Solicitud | null>(null);
+  const [puedeDeshacerRechazo, setPuedeDeshacerRechazo] = useState(false);
+  const [puedeDeshacerAprobacion, setPuedeDeshacerAprobacion] = useState(false);
+  const [minutosRestantes, setMinutosRestantes] = useState(0);
   const [error, setError] = useState('');
 
   // Form state
@@ -146,6 +151,109 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
     } catch (err: any) {
       console.error('Error al anular solicitud:', err);
       setError(err.message || 'Error al anular solicitud');
+    }
+  };
+
+  const handleVerDetalles = (solicitud: Solicitud) => {
+    setSelectedSolicitud(solicitud);
+    setIsViewDialogOpen(true);
+    
+    // Verificar si se puede deshacer el rechazo (solo admin, solo rechazadas, dentro de 15 min)
+    if (solicitud.estado === 'Rechazada' && userRole === 'admin' && solicitud.fechaRechazo) {
+      const fechaRechazo = new Date(solicitud.fechaRechazo);
+      const ahora = new Date();
+      const minutosTranscurridos = (ahora.getTime() - fechaRechazo.getTime()) / (1000 * 60);
+      const puedeDeshacer = minutosTranscurridos <= 15;
+      setPuedeDeshacerRechazo(puedeDeshacer);
+      setMinutosRestantes(Math.max(0, Math.round(15 - minutosTranscurridos)));
+      
+      // Actualizar contador cada minuto
+      if (puedeDeshacer) {
+        const interval = setInterval(() => {
+          const ahora = new Date();
+          const minutosTranscurridos = (ahora.getTime() - fechaRechazo.getTime()) / (1000 * 60);
+          const minutosRest = Math.max(0, Math.round(15 - minutosTranscurridos));
+          setMinutosRestantes(minutosRest);
+          if (minutosRest === 0) {
+            setPuedeDeshacerRechazo(false);
+            clearInterval(interval);
+          }
+        }, 60000);
+        
+        return () => clearInterval(interval);
+      }
+    } else {
+      setPuedeDeshacerRechazo(false);
+    }
+
+    // Verificar si se puede deshacer la aprobación (quien aprobó o admin, dentro de 15 min)
+    if (solicitud.estado === 'Aprobada' && solicitud.fechaAprobacion) {
+      const fechaAprobacion = new Date(solicitud.fechaAprobacion);
+      const ahora = new Date();
+      const minutosTranscurridos = (ahora.getTime() - fechaAprobacion.getTime()) / (1000 * 60);
+      const puedeDeshacer = minutosTranscurridos <= 15;
+      
+      // Solo puede deshacer si es admin o aprobador que aprobó
+      const puedeDeshacerPorRol = userRole === 'admin' || 
+        userRole === 'aprobador_jefe' || 
+        userRole === 'aprobador_financiero';
+      
+      setPuedeDeshacerAprobacion(puedeDeshacer && puedeDeshacerPorRol);
+      setMinutosRestantes(Math.max(0, Math.round(15 - minutosTranscurridos)));
+      
+      // Actualizar contador cada minuto
+      if (puedeDeshacer && puedeDeshacerPorRol) {
+        const interval = setInterval(() => {
+          const ahora = new Date();
+          const minutosTranscurridos = (ahora.getTime() - fechaAprobacion.getTime()) / (1000 * 60);
+          const minutosRest = Math.max(0, Math.round(15 - minutosTranscurridos));
+          setMinutosRestantes(minutosRest);
+          if (minutosRest === 0) {
+            setPuedeDeshacerAprobacion(false);
+            clearInterval(interval);
+          }
+        }, 60000);
+        
+        return () => clearInterval(interval);
+      }
+    } else {
+      setPuedeDeshacerAprobacion(false);
+    }
+  };
+
+  const handleDeshacerRechazo = async () => {
+    if (!selectedSolicitud) return;
+    
+    if (!confirm('¿Estás seguro de que deseas deshacer el rechazo de esta solicitud? La solicitud volverá a estado Pendiente.')) {
+      return;
+    }
+
+    try {
+      await solicitudesAPI.deshacerRechazo(selectedSolicitud.id.toString());
+      setPuedeDeshacerRechazo(false);
+      setIsViewDialogOpen(false);
+      await cargarSolicitudes();
+    } catch (err: any) {
+      console.error('Error al deshacer rechazo:', err);
+      setError(err.message || 'Error al deshacer rechazo');
+    }
+  };
+
+  const handleDeshacerAprobacion = async () => {
+    if (!selectedSolicitud) return;
+    
+    if (!confirm('¿Estás seguro de que deseas deshacer la aprobación de esta solicitud? La solicitud volverá a estado Pendiente.')) {
+      return;
+    }
+
+    try {
+      await solicitudesAPI.deshacerAprobacion(selectedSolicitud.id.toString());
+      setPuedeDeshacerAprobacion(false);
+      setIsViewDialogOpen(false);
+      await cargarSolicitudes();
+    } catch (err: any) {
+      console.error('Error al deshacer aprobación:', err);
+      setError(err.message || 'Error al deshacer aprobación');
     }
   };
 
@@ -390,7 +498,12 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="sm">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleVerDetalles(solicitud)}
+                            title="Ver detalles"
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
                           {canCreateSolicitud && solicitud.estado === 'Pendiente' && (
@@ -399,6 +512,7 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
                               size="sm"
                               className="text-red-600 hover:bg-red-50"
                               onClick={() => handleAnular(solicitud.id)}
+                              title="Anular solicitud"
                             >
                               <Ban className="h-4 w-4" />
                             </Button>
@@ -413,6 +527,97 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Ver Detalles Dialog */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalles de la Solicitud</DialogTitle>
+            <DialogDescription>
+              Información completa de la solicitud
+            </DialogDescription>
+          </DialogHeader>
+          {selectedSolicitud && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">N° Solicitud</Label>
+                  <p className="font-medium">{selectedSolicitud.numero}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Estado</Label>
+                  <div className="mt-1">
+                    <Badge variant="secondary" className={estadoConfig[selectedSolicitud.estado].className}>
+                      {estadoConfig[selectedSolicitud.estado].label}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Usuario</Label>
+                  <p className="font-medium">{selectedSolicitud.usuario}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Categoría</Label>
+                  <p className="font-medium">{selectedSolicitud.categoria}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Monto</Label>
+                  <p className="font-medium">${selectedSolicitud.monto.toLocaleString('es-ES')}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Fecha</Label>
+                  <p className="font-medium">{new Date(selectedSolicitud.fecha).toLocaleDateString('es-ES')}</p>
+                </div>
+                {selectedSolicitud.prioridad && (
+                  <div>
+                    <Label className="text-muted-foreground">Prioridad</Label>
+                    <p className="font-medium capitalize">{selectedSolicitud.prioridad}</p>
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Descripción</Label>
+                <p className="mt-1">{selectedSolicitud.descripcion}</p>
+              </div>
+              {selectedSolicitud.justificacion && (
+                <div>
+                  <Label className="text-muted-foreground">Justificación</Label>
+                  <p className="mt-1">{selectedSolicitud.justificacion}</p>
+                </div>
+              )}
+              {selectedSolicitud.estado === 'Rechazada' && selectedSolicitud.motivoRechazo && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded">
+                  <Label className="text-muted-foreground text-red-800">Motivo de Rechazo</Label>
+                  <p className="mt-1 text-red-700">{selectedSolicitud.motivoRechazo}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            {puedeDeshacerRechazo && selectedSolicitud?.estado === 'Rechazada' && (
+              <Button 
+                variant="default" 
+                onClick={handleDeshacerRechazo}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Deshacer Rechazo ({minutosRestantes} min restantes)
+              </Button>
+            )}
+            {puedeDeshacerAprobacion && selectedSolicitud?.estado === 'Aprobada' && (
+              <Button 
+                variant="default" 
+                onClick={handleDeshacerAprobacion}
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                Deshacer Aprobación ({minutosRestantes} min restantes)
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

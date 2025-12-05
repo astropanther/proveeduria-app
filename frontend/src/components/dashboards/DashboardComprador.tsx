@@ -31,13 +31,18 @@ export function DashboardComprador() {
     try {
       setLoading(true);
       const solicitudes = await solicitudesAPI.getAll();
-      setMisSolicitudes(solicitudes.slice(0, 5));
+      // Asegurar que todas las solicitudes tengan estado
+      const solicitudesConEstado = solicitudes.map((s: any) => ({
+        ...s,
+        estado: s.estado || 'Pendiente', // Estado por defecto si no existe
+      }));
+      setMisSolicitudes(solicitudesConEstado.slice(0, 5));
       
       const statsData = {
-        total: solicitudes.length,
-        pendientes: solicitudes.filter((s: any) => s.estado === 'Pendiente').length,
-        aprobadas: solicitudes.filter((s: any) => s.estado === 'Aprobada').length,
-        rechazadas: solicitudes.filter((s: any) => s.estado === 'Rechazada').length,
+        total: solicitudesConEstado.length,
+        pendientes: solicitudesConEstado.filter((s: any) => s.estado === 'Pendiente').length,
+        aprobadas: solicitudesConEstado.filter((s: any) => s.estado === 'Aprobada').length,
+        rechazadas: solicitudesConEstado.filter((s: any) => s.estado === 'Rechazada').length,
       };
       setStats(statsData);
     } catch (error) {

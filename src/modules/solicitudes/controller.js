@@ -8,6 +8,13 @@
 import * as solicitudesRepository from './repository.js';
 import { enviarNotificacion } from '../notificaciones/service.js';
 import { registrarActividad } from '../auditoria/service.js';
+import {
+  puedeVerSolicitud,
+  puedeAprobarSolicitud,
+  filtrarCamposSolicitud,
+  ROLES,
+  LIMITES_APROBACION,
+} from './permissions.js';
 
 /**
  * Crear una nueva solicitud (PB-10)
@@ -54,14 +61,45 @@ export async function crearSolicitud(req, res) {
       detalles: `Solicitud ${nuevaSolicitud.numero} creada`,
     });
 
-    // Enviar notificación
+    // Enviar notificación al comprador
     try {
-      await enviarNotificacion(usuarioEmail, 'creacion');
+      await enviarNotificacion(usuarioEmail, 'creacion', {}, 'comprador');
     } catch (error) {
-      console.error('Error al enviar notificación:', error);
+      console.error('Error al enviar notificación al comprador:', error);
+    }
+
+    // Enviar notificación a aprobadores y admin
+    try {
+      const { findAll: findAllUsers } = await import('../users/repository.js');
+      // Obtener aprobadores y admin por separado
+      const aprobadoresJefe = await findAllUsers({ role: 'Aprobador Jefe', activo: true });
+      const aprobadoresFinancieros = await findAllUsers({ role: 'Aprobador Financiero', activo: true });
+      const aprobadores = [...aprobadoresJefe, ...aprobadoresFinancieros];
+      
+      const adminUsers = await findAllUsers({ role: 'Administrador', activo: true });
+      
+      // Notificar a todos los aprobadores y admin
+      const usuariosANotificar = [...aprobadores, ...adminUsers];
+      const emailsUnicos = [...new Set(usuariosANotificar.map(u => u.email))];
+      
+      for (const email of emailsUnicos) {
+        try {
+          await enviarNotificacion(email, 'nueva_solicitud', {
+            usuario: usuario,
+            descripcion: descripcion,
+            numero: nuevaSolicitud.numero,
+            monto: monto,
+          }, 'admin');
+        } catch (error) {
+          console.error(`Error al enviar notificación a ${email}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error al enviar notificaciones a aprobadores:', error);
       // No fallar la creación si la notificación falla
     }
 
+    // No filtrar campos al crear, devolver la solicitud completa
     res.status(201).json(nuevaSolicitud);
   } catch (error) {
     console.error('Error al crear solicitud:', error);
@@ -84,16 +122,51 @@ export async function listarSolicitudes(req, res) {
       filters.estado = estado;
     }
 
-    // Filtrar por usuario si no es admin
+    // Aplicar filtros según rol y permisos
     const userId = req.user.userId || req.user.id;
-    if (req.user.role !== 'Administrador') {
+    const userRole = req.user.role;
+
+    // Admin puede ver todo
+    if (userRole === ROLES.ADMIN) {
+      if (usuarioId) {
+        filters.usuarioId = parseInt(usuarioId);
+      }
+    }
+    // Comprador solo ve sus propias solicitudes
+    else if (userRole === ROLES.COMPRADOR) {
       filters.usuarioId = userId;
-    } else if (usuarioId) {
-      filters.usuarioId = parseInt(usuarioId);
+    }
+    // Aprobadores ven solicitudes pendientes que necesitan su aprobación
+    else if (userRole === ROLES.APROBADOR_JEFE || userRole === ROLES.APROBADOR_FINANCIERO) {
+      // Por defecto mostrar pendientes, pero pueden ver todas si no hay filtro
+      if (!estado || estado === 'Pendiente') {
+        filters.estado = 'Pendiente';
+      }
     }
 
     const solicitudes = await solicitudesRepository.getAllSolicitudes(filters);
-    res.json(solicitudes);
+    
+    // Filtrar campos según permisos y aplicar control de visibilidad
+    const solicitudesFiltradas = solicitudes
+      .filter(s => {
+        try {
+          return puedeVerSolicitud(userRole, userId, s);
+        } catch (error) {
+          console.error('Error al verificar permisos de solicitud:', error);
+          return false;
+        }
+      })
+      .map(s => {
+        try {
+          return filtrarCamposSolicitud(userRole, userId, s);
+        } catch (error) {
+          console.error('Error al filtrar campos de solicitud:', error);
+          return null;
+        }
+      })
+      .filter(s => s !== null); // Remover solicitudes sin permiso
+
+    res.json(solicitudesFiltradas);
   } catch (error) {
     console.error('Error al listar solicitudes:', error);
     res.status(500).json({
@@ -116,15 +189,26 @@ export async function obtenerSolicitud(req, res) {
       });
     }
 
-    // Verificar permisos: solo el usuario que la creó o un admin puede verla
+    // Verificar permisos usando el módulo de permisos
     const userId = req.user.userId || req.user.id;
-    if (req.user.role !== 'Administrador' && solicitud.usuarioId !== userId) {
+    const userRole = req.user.role;
+
+    if (!puedeVerSolicitud(userRole, userId, solicitud)) {
       return res.status(403).json({
         error: 'No tienes permiso para ver esta solicitud',
       });
     }
 
-    res.json(solicitud);
+    // Filtrar campos según permisos
+    const solicitudFiltrada = filtrarCamposSolicitud(userRole, userId, solicitud);
+    
+    if (!solicitudFiltrada) {
+      return res.status(403).json({
+        error: 'No tienes permiso para ver esta solicitud',
+      });
+    }
+
+    res.json(solicitudFiltrada);
   } catch (error) {
     console.error('Error al obtener solicitud:', error);
     res.status(500).json({
@@ -153,22 +237,47 @@ export async function aprobarSolicitud(req, res) {
       });
     }
 
-    // Verificar rol del aprobador
-    const esAprobadorJefe = req.user.role === 'Aprobador Jefe';
-    const esAprobadorFinanciero = req.user.role === 'Aprobador Financiero';
-    const esAdmin = req.user.role === 'Administrador';
+    const userRole = req.user.role;
+    const userId = req.user.userId || req.user.id;
 
-    if (!esAprobadorJefe && !esAprobadorFinanciero && !esAdmin) {
+    // Verificar permisos usando el módulo de permisos
+    if (!puedeAprobarSolicitud(userRole, userId, solicitud)) {
+      // Mensaje más específico
+      if (solicitud.estado !== 'Pendiente') {
+        return res.status(403).json({
+          error: `Esta solicitud ya fue ${solicitud.estado.toLowerCase()}. No se puede aprobar nuevamente.`,
+        });
+      }
+      
+      // Verificar si ya fue aprobada por este usuario
+      if (solicitud.aprobadorJefe === userId || solicitud.aprobadorFinanciero === userId) {
+        return res.status(403).json({
+          error: 'Ya has aprobado esta solicitud anteriormente.',
+        });
+      }
+      
+      // Verificar permisos por monto
+      const monto = parseFloat(solicitud.monto) || 0;
+      if (userRole === ROLES.APROBADOR_FINANCIERO && monto < LIMITES_APROBACION.APROBADOR_FINANCIERO_MIN) {
+        return res.status(403).json({
+          error: `No tienes permiso para aprobar solicitudes menores a $${LIMITES_APROBACION.APROBADOR_FINANCIERO_MIN.toLocaleString('es-ES')}.`,
+        });
+      }
+      
       return res.status(403).json({
-        error: 'No tienes permiso para aprobar solicitudes',
+        error: 'No tienes permiso para aprobar esta solicitud.',
       });
     }
 
-    // Lógica de aprobación: necesita ambos aprobadores o admin
+    const esAdmin = userRole === ROLES.ADMIN;
+    const esAprobadorJefe = userRole === ROLES.APROBADOR_JEFE;
+    const esAprobadorFinanciero = userRole === ROLES.APROBADOR_FINANCIERO;
+    const monto = parseFloat(solicitud.monto) || 0;
+
+    // Lógica de aprobación según monto y roles
     let updates = {};
     const ahora = new Date().toISOString();
 
-    const userId = req.user.userId || req.user.id;
     if (esAdmin) {
       // Admin puede aprobar directamente
       updates = {
@@ -177,30 +286,44 @@ export async function aprobarSolicitud(req, res) {
         aprobadorFinanciero: userId,
         fechaAprobacion: ahora,
       };
-    } else if (esAprobadorJefe && !solicitud.aprobadorJefe) {
-      // Primer aprobador (Jefe)
+    } else if (esAprobadorJefe) {
+      // Aprobador Jefe
       updates = {
         aprobadorJefe: userId,
       };
-      // Si ya tiene aprobador financiero, se aprueba completamente
-      if (solicitud.aprobadorFinanciero) {
+      
+      // Si el monto es < $50,000, puede aprobar solo
+      if (monto < LIMITES_APROBACION.APROBADOR_FINANCIERO_MIN) {
+        updates.estado = 'Aprobada';
+        updates.fechaAprobacion = ahora;
+        updates.aprobadorFinanciero = userId; // Se auto-asigna para montos pequeños
+      }
+      // Si el monto >= $50,000, necesita también aprobación financiera
+      else if (solicitud.aprobadorFinanciero) {
+        // Si ya tiene aprobador financiero, se aprueba completamente
         updates.estado = 'Aprobada';
         updates.fechaAprobacion = ahora;
       }
-    } else if (esAprobadorFinanciero && !solicitud.aprobadorFinanciero) {
-      // Segundo aprobador (Financiero)
+    } else if (esAprobadorFinanciero) {
+      // Aprobador Financiero
       updates = {
         aprobadorFinanciero: userId,
       };
-      // Si ya tiene aprobador jefe, se aprueba completamente
-      if (solicitud.aprobadorJefe) {
-        updates.estado = 'Aprobada';
-        updates.fechaAprobacion = ahora;
+      
+      // Si el monto >= $50,000, siempre requiere aprobación financiera
+      if (monto >= LIMITES_APROBACION.APROBADOR_FINANCIERO_MIN) {
+        // Si ya tiene aprobador jefe, se aprueba completamente
+        if (solicitud.aprobadorJefe) {
+          updates.estado = 'Aprobada';
+          updates.fechaAprobacion = ahora;
+        }
+      } else {
+        // Para montos menores, si ya tiene aprobación del jefe, se aprueba
+        if (solicitud.aprobadorJefe) {
+          updates.estado = 'Aprobada';
+          updates.fechaAprobacion = ahora;
+        }
       }
-    } else {
-      return res.status(400).json({
-        error: 'Esta solicitud ya fue procesada por tu rol',
-      });
     }
 
     const solicitudActualizada = await solicitudesRepository.updateSolicitud(id, updates);
@@ -216,10 +339,31 @@ export async function aprobarSolicitud(req, res) {
 
     // Enviar notificación si está completamente aprobada
     if (solicitudActualizada.estado === 'Aprobada') {
+      // Notificar al comprador (general)
       try {
-        await enviarNotificacion(solicitud.usuarioEmail, 'aprobacion');
+        await enviarNotificacion(solicitud.usuarioEmail, 'aprobacion', {}, 'comprador');
       } catch (error) {
-        console.error('Error al enviar notificación:', error);
+        console.error('Error al enviar notificación al comprador:', error);
+      }
+
+      // Notificar a admin (específica)
+      try {
+        const { findAll: findAllUsers } = await import('../users/repository.js');
+        const adminUsers = await findAllUsers({ role: 'Administrador', activo: true });
+        const aprobadorNombre = req.user.nombre || req.user.email?.split('@')[0] || 'Aprobador';
+        
+        for (const admin of adminUsers) {
+          try {
+            await enviarNotificacion(admin.email, 'aprobada', {
+              aprobador: aprobadorNombre,
+              numero: solicitud.numero,
+            }, 'admin');
+          } catch (error) {
+            console.error(`Error al enviar notificación a admin ${admin.email}:`, error);
+          }
+        }
+      } catch (error) {
+        console.error('Error al enviar notificaciones a admin:', error);
       }
     }
 
@@ -286,14 +430,35 @@ export async function rechazarSolicitud(req, res) {
       detalles: `Solicitud ${solicitud.numero} rechazada: ${motivo}`,
     });
 
-    // Enviar notificación
+    // Enviar notificación al comprador (general)
     try {
       await enviarNotificacion(solicitud.usuarioEmail, 'rechazo', {
         folio: solicitud.numero,
         motivo,
-      });
+      }, 'comprador');
     } catch (error) {
-      console.error('Error al enviar notificación:', error);
+      console.error('Error al enviar notificación al comprador:', error);
+    }
+
+    // Enviar notificación a admin (específica)
+    try {
+      const { findAll: findAllUsers } = await import('../users/repository.js');
+      const adminUsers = await findAllUsers({ role: 'Administrador', activo: true });
+      const aprobadorNombre = req.user.nombre || req.user.email?.split('@')[0] || 'Aprobador';
+      
+      for (const admin of adminUsers) {
+        try {
+          await enviarNotificacion(admin.email, 'rechazada', {
+            aprobador: aprobadorNombre,
+            numero: solicitud.numero,
+            motivo: motivo,
+          }, 'admin');
+        } catch (error) {
+          console.error(`Error al enviar notificación a admin ${admin.email}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error al enviar notificaciones a admin:', error);
     }
 
     res.json(solicitudActualizada);
@@ -347,11 +512,31 @@ export async function anularSolicitud(req, res) {
       detalles: `Solicitud ${solicitud.numero} anulada`,
     });
 
-    // Enviar notificación
+    // Enviar notificación al comprador (general)
     try {
-      await enviarNotificacion(solicitud.usuarioEmail, 'anulacion');
+      await enviarNotificacion(solicitud.usuarioEmail, 'anulacion', {}, 'comprador');
     } catch (error) {
-      console.error('Error al enviar notificación:', error);
+      console.error('Error al enviar notificación al comprador:', error);
+    }
+
+    // Enviar notificación a admin (específica)
+    try {
+      const { findAll: findAllUsers } = await import('../users/repository.js');
+      const adminUsers = await findAllUsers({ role: 'Administrador', activo: true });
+      const usuarioNombre = solicitud.usuario || solicitud.usuarioEmail?.split('@')[0] || 'Usuario';
+      
+      for (const admin of adminUsers) {
+        try {
+          await enviarNotificacion(admin.email, 'anulada', {
+            usuario: usuarioNombre,
+            numero: solicitud.numero,
+          }, 'admin');
+        } catch (error) {
+          console.error(`Error al enviar notificación a admin ${admin.email}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error al enviar notificaciones a admin:', error);
     }
 
     res.json(solicitudActualizada);
@@ -359,6 +544,164 @@ export async function anularSolicitud(req, res) {
     console.error('Error al anular solicitud:', error);
     res.status(500).json({
       error: error.message || 'Error al anular solicitud',
+    });
+  }
+}
+
+/**
+ * Deshacer rechazo de solicitud (solo dentro de 15 minutos)
+ */
+export async function deshacerRechazo(req, res) {
+  try {
+    const { id } = req.params;
+    const solicitud = await solicitudesRepository.getSolicitudById(id);
+
+    if (!solicitud) {
+      return res.status(404).json({
+        error: 'Solicitud no encontrada',
+      });
+    }
+
+    if (solicitud.estado !== 'Rechazada') {
+      return res.status(400).json({
+        error: 'Solo se pueden deshacer solicitudes rechazadas',
+      });
+    }
+
+    // Verificar que no hayan pasado más de 15 minutos desde el rechazo
+    if (!solicitud.fechaRechazo) {
+      return res.status(400).json({
+        error: 'No se puede determinar cuándo fue rechazada esta solicitud',
+      });
+    }
+
+    const fechaRechazo = new Date(solicitud.fechaRechazo);
+    const ahora = new Date();
+    const minutosTranscurridos = (ahora - fechaRechazo) / (1000 * 60);
+
+    if (minutosTranscurridos > 15) {
+      return res.status(400).json({
+        error: 'El tiempo para deshacer el rechazo ha expirado (15 minutos)',
+        minutosTranscurridos: Math.round(minutosTranscurridos),
+      });
+    }
+
+    // Verificar permisos: solo quien rechazó o un admin puede deshacer
+    const userId = req.user.userId || req.user.id;
+    const userRole = req.user.role;
+
+    // Solo admin puede deshacer cualquier rechazo, o el mismo usuario que rechazó
+    // (Nota: necesitaríamos guardar quién rechazó, por ahora solo admin)
+    if (userRole !== ROLES.ADMIN) {
+      return res.status(403).json({
+        error: 'Solo un administrador puede deshacer rechazos',
+      });
+    }
+
+    // Restaurar a estado Pendiente y limpiar datos de rechazo
+    const solicitudActualizada = await solicitudesRepository.updateSolicitud(id, {
+      estado: 'Pendiente',
+      motivoRechazo: null,
+      fechaRechazo: null,
+    });
+
+    // Registrar actividad
+    await registrarActividad({
+      usuarioId: userId,
+      accion: 'DESHACER_RECHAZO',
+      entidad: 'Solicitud',
+      entidadId: solicitud.id,
+      detalles: `Rechazo de solicitud ${solicitud.numero} deshecho`,
+    });
+
+    res.json({
+      ...solicitudActualizada,
+      minutosRestantes: Math.max(0, 15 - Math.round(minutosTranscurridos)),
+    });
+  } catch (error) {
+    console.error('Error al deshacer rechazo:', error);
+    res.status(500).json({
+      error: error.message || 'Error al deshacer rechazo',
+    });
+  }
+}
+
+/**
+ * Deshacer aprobación de solicitud (solo dentro de 10-15 minutos)
+ */
+export async function deshacerAprobacion(req, res) {
+  try {
+    const { id } = req.params;
+    const solicitud = await solicitudesRepository.getSolicitudById(id);
+
+    if (!solicitud) {
+      return res.status(404).json({
+        error: 'Solicitud no encontrada',
+      });
+    }
+
+    if (solicitud.estado !== 'Aprobada') {
+      return res.status(400).json({
+        error: 'Solo se pueden deshacer solicitudes aprobadas',
+      });
+    }
+
+    // Verificar que no hayan pasado más de 15 minutos desde la aprobación
+    if (!solicitud.fechaAprobacion) {
+      return res.status(400).json({
+        error: 'No se puede determinar cuándo fue aprobada esta solicitud',
+      });
+    }
+
+    const fechaAprobacion = new Date(solicitud.fechaAprobacion);
+    const ahora = new Date();
+    const minutosTranscurridos = (ahora - fechaAprobacion) / (1000 * 60);
+
+    if (minutosTranscurridos > 15) {
+      return res.status(400).json({
+        error: 'El tiempo para deshacer la aprobación ha expirado (15 minutos)',
+        minutosTranscurridos: Math.round(minutosTranscurridos),
+      });
+    }
+
+    // Verificar permisos: solo quien aprobó o un admin puede deshacer
+    const userId = req.user.userId || req.user.id;
+    const userRole = req.user.role;
+
+    // Solo admin puede deshacer cualquier aprobación, o el mismo usuario que aprobó
+    if (userRole !== ROLES.ADMIN && 
+        solicitud.aprobadorJefe !== userId && 
+        solicitud.aprobadorFinanciero !== userId) {
+      return res.status(403).json({
+        error: 'Solo puedes deshacer aprobaciones que hayas realizado tú mismo o como administrador',
+      });
+    }
+
+    // Restaurar a estado Pendiente y limpiar datos de aprobación
+    const solicitudActualizada = await solicitudesRepository.updateSolicitud(id, {
+      estado: 'Pendiente',
+      aprobadorJefe: null,
+      aprobadorFinanciero: null,
+      fechaAprobacion: null,
+    });
+
+    // Registrar actividad
+    await registrarActividad({
+      usuarioId: userId,
+      accion: 'DESHACER_APROBACION',
+      entidad: 'Solicitud',
+      entidadId: solicitud.id,
+      detalles: `Aprobación de solicitud ${solicitud.numero} deshecha`,
+    });
+
+    res.json({
+      ...solicitudActualizada,
+      minutosRestantes: Math.max(0, 15 - Math.round(minutosTranscurridos)),
+    });
+  } catch (error) {
+    console.error('Error al deshacer aprobación:', error);
+    res.status(500).json({
+      error: error.message || 'Error al deshacer aprobación',
     });
   }
 }

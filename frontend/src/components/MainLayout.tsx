@@ -9,6 +9,7 @@ import { SolicitudesCompra } from './SolicitudesCompra';
 import { AprobacionSolicitudes } from './AprobacionSolicitudes';
 import { Reportes } from './Reportes';
 import { PruebaNotificaciones } from './PruebaNotificaciones';
+import { NotificacionesInbox } from './NotificacionesInbox';
 import { User } from '../App';
 
 interface MainLayoutProps {
@@ -49,6 +50,9 @@ export function MainLayout({ user, onLogout, isDarkMode, onToggleDarkMode }: Mai
       case 'reportes':
         return <Reportes userRole={user.rol} />;
       case 'notificaciones':
+        if (user.rol === 'comprador') {
+          return <NotificacionesInbox userRole={user.rol} />;
+        }
         return <PruebaNotificaciones userRole={user.rol} />;
       default:
         return <DashboardAdmin />;

@@ -114,6 +114,16 @@ export const usersAPI = {
       body: JSON.stringify(userData),
     });
   },
+  inactivate: async (id: number) => {
+    return request<any>(`/users/${id}/inactivate`, {
+      method: 'PATCH',
+    });
+  },
+  activate: async (id: number) => {
+    return request<any>(`/users/${id}/activate`, {
+      method: 'PATCH',
+    });
+  },
 };
 
 // Solicitudes API (PB-10, PB-11, PB-12)
@@ -156,14 +166,24 @@ export const solicitudesAPI = {
       method: 'POST',
     });
   },
+  deshacerRechazo: async (id: string) => {
+    return request<any>(`/solicitudes/${id}/deshacer-rechazo`, {
+      method: 'POST',
+    });
+  },
+  deshacerAprobacion: async (id: string) => {
+    return request<any>(`/solicitudes/${id}/deshacer-aprobacion`, {
+      method: 'POST',
+    });
+  },
 };
 
 // Notificaciones API (PB-13)
 export const notificacionesAPI = {
-  enviar: async (email: string, evento: string) => {
+  enviar: async (email: string, evento: string, detalles?: any) => {
     return request<{ enviado: boolean; modo?: string; email: string; evento: string }>('/notificaciones', {
       method: 'POST',
-      body: JSON.stringify({ email, evento }),
+      body: JSON.stringify({ email, evento, ...detalles }),
     });
   },
 };

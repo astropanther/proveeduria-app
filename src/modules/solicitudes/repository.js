@@ -104,11 +104,11 @@ export async function createSolicitud(solicitudData) {
         numero, descripcion, usuario_id, monto, categoria, fecha,
         estado, prioridad, justificacion, fecha_creacion
       )
-      OUTPUT INSERTED.*
       VALUES (
         @numero, @descripcion, @usuarioId, @monto, @categoria, @fecha,
         @estado, @prioridad, @justificacion, GETDATE()
-      )
+      );
+      SELECT SCOPE_IDENTITY() AS id;
     `;
 
     const params = {
@@ -124,7 +124,18 @@ export async function createSolicitud(solicitudData) {
     };
 
     const result = await query(sqlQuery, params);
-    const created = result.recordset[0];
+    const newId = result.recordset[0]?.id;
+    
+    if (!newId) {
+      throw new Error('No se pudo obtener el ID de la solicitud creada');
+    }
+    
+    // Obtener la solicitud completa usando el ID
+    const createdResult = await query(
+      `SELECT * FROM solicitudes WHERE id = @id`,
+      { id: parseInt(newId) }
+    );
+    const created = createdResult.recordset[0];
     
     if (!created) {
       throw new Error('No se pudo crear la solicitud');

@@ -44,10 +44,12 @@ export async function createUser(req, res) {
       });
     }
 
-    // Validar longitud mínima de password
-    if (password.length < 6) {
+    // Validar contraseña con validador seguro
+    const { validatePassword } = await import('../../utils/passwordValidator.js');
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
       return res.status(400).json({
-        error: 'La contraseña debe tener al menos 6 caracteres',
+        error: passwordValidation.error,
       });
     }
 
@@ -172,11 +174,13 @@ export async function updateUser(req, res) {
       }
     }
 
-    // Si se actualiza el password, validar longitud
+    // Si se actualiza el password, validar con validador seguro
     if (password !== undefined) {
-      if (password.length < 6) {
+      const { validatePassword } = await import('../../utils/passwordValidator.js');
+      const passwordValidation = validatePassword(password);
+      if (!passwordValidation.valid) {
         return res.status(400).json({
-          error: 'La contraseña debe tener al menos 6 caracteres',
+          error: passwordValidation.error,
         });
       }
       updates.password = password;
