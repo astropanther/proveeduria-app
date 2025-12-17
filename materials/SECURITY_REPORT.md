@@ -56,6 +56,8 @@
 ## Mejoras de Seguridad Implementadas
 
 ### 1. Validador de Contraseñas Seguras
+
+
 - **Ubicación**: `src/utils/passwordValidator.js`
 - **Requisitos**:
   - Mínimo 8 caracteres (antes era 6)
@@ -64,24 +66,28 @@
   - Al menos una minúscula
   - Al menos un número
   - No puede ser solo números o solo letras
-  - Bloquea contraseñas comunes/debiles (password, admin123, etc.)
+  - Bloquea contraseñas comunes/débiles (password, admin123, etc.)
 
 ### 2. Contraseñas Actualizadas en Seed Data
+
 - **Antes**: `admin123`, `comprador123`, `aprobador123` (débiles, en bases de datos comprometidas)
 - **Ahora**: `Admin2024!Secure`, `Comprador2024!Secure`, `Aprobador2024!Secure`
 - **Nota**: Los usuarios existentes en la base de datos aún tienen las contraseñas antiguas. Se debe ejecutar `seed_data.sql` actualizado o actualizar manualmente.
 
 ### 3. Protección SQL Injection
+
 - Todas las queries usan parámetros (`@parametro`)
 - No hay concatenación de strings en queries SQL
 - Uso de `mssql` con prepared statements
 
 ### 4. JWT Security
+
 - Tokens con expiración (24h por defecto)
 - Secret key configurable en `.env`
 - Validación de tokens en cada request protegido
 
 ### 5. Validaciones de Entrada
+
 - Validación de email con regex
 - Validación de roles
 - Validación de tipos de datos
@@ -90,26 +96,31 @@
 ## Recomendaciones Adicionales de Seguridad
 
 ### 1. Rate Limiting (Pendiente)
+
 - Implementar límite de requests por IP
 - Prevenir ataques de fuerza bruta en login
 - **Sugerencia**: Usar `express-rate-limit`
 
 ### 2. CORS Configuration (Pendiente)
+
 - Configurar CORS para permitir solo el frontend
 - Bloquear requests de otros orígenes
 - **Sugerencia**: Usar `cors` middleware
 
 ### 3. Helmet.js (Pendiente)
+
 - Headers de seguridad HTTP
 - Prevenir XSS, clickjacking, etc.
 - **Sugerencia**: Usar `helmet` middleware
 
 ### 4. HTTPS en Producción
+
 - Usar certificados SSL/TLS
 - Forzar HTTPS en producción
 - No enviar tokens en URLs
 
 ### 5. Logging de Seguridad
+
 - Registrar intentos de login fallidos
 - Alertar sobre múltiples fallos
 - Monitorear actividad sospechosa
@@ -137,9 +148,9 @@
 El warning de Google Password Manager apareció porque las contraseñas antiguas (`admin123`, `comprador123`, etc.) están en bases de datos de contraseñas comprometidas. Esto es común con contraseñas débiles y predecibles.
 
 **Solución implementada**:
+
 - Contraseñas más fuertes con el nuevo validador
 - Seed data actualizado con contraseñas seguras
 - Validación de contraseñas al crear/actualizar usuarios
 
 **Acción requerida**: Actualizar los usuarios existentes en la base de datos con las nuevas contraseñas.
-

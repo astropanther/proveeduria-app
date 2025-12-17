@@ -7,6 +7,7 @@
 
 import * as solicitudesRepository from './repository.js';
 import { enviarNotificacion } from '../notificaciones/service.js';
+import { getAprobadoresYAdmin } from '../notificaciones/notificationHelper.js';
 import { registrarActividad } from '../auditoria/service.js';
 import {
   puedeVerSolicitud,
@@ -63,7 +64,11 @@ export async function crearSolicitud(req, res) {
 
     // Enviar notificación al comprador
     try {
-      await enviarNotificacion(usuarioEmail, 'creacion', {}, 'comprador');
+      await enviarNotificacion(usuarioEmail, 'creacion', {
+        solicitudId: nuevaSolicitud.id,
+        numero: nuevaSolicitud.numero,
+        usuarioId: usuarioId, // Pasar usuarioId directamente
+      }, 'comprador');
     } catch (error) {
       console.error('Error al enviar notificación al comprador:', error);
     }
@@ -71,31 +76,26 @@ export async function crearSolicitud(req, res) {
     // Enviar notificación a aprobadores y admin
     try {
       const { findAll: findAllUsers } = await import('../users/repository.js');
-      // Obtener aprobadores y admin por separado
-      const aprobadoresJefe = await findAllUsers({ role: 'Aprobador Jefe', activo: true });
-      const aprobadoresFinancieros = await findAllUsers({ role: 'Aprobador Financiero', activo: true });
-      const aprobadores = [...aprobadoresJefe, ...aprobadoresFinancieros];
+      const usuariosANotificar = await getAprobadoresYAdmin(findAllUsers);
       
-      const adminUsers = await findAllUsers({ role: 'Administrador', activo: true });
+      console.log(`[SOLICITUDES] Notificando a ${usuariosANotificar.length} usuarios (aprobadores y admin)`);
       
-      // Notificar a todos los aprobadores y admin
-      const usuariosANotificar = [...aprobadores, ...adminUsers];
-      const emailsUnicos = [...new Set(usuariosANotificar.map(u => u.email))];
-      
-      for (const email of emailsUnicos) {
+      for (const usuarioANotificar of usuariosANotificar) {
         try {
-          await enviarNotificacion(email, 'nueva_solicitud', {
+          await enviarNotificacion(usuarioANotificar.email, 'nueva_solicitud', {
             usuario: usuario,
             descripcion: descripcion,
             numero: nuevaSolicitud.numero,
             monto: monto,
+            solicitudId: nuevaSolicitud.id,
+            usuarioId: usuarioANotificar.id, // Pasar usuarioId directamente
           }, 'admin');
         } catch (error) {
-          console.error(`Error al enviar notificación a ${email}:`, error);
+          console.error(`[SOLICITUDES] Error al enviar notificación a ${usuarioANotificar.email}:`, error);
         }
       }
     } catch (error) {
-      console.error('Error al enviar notificaciones a aprobadores:', error);
+      console.error('[SOLICITUDES] Error al enviar notificaciones a aprobadores:', error);
       // No fallar la creación si la notificación falla
     }
 
@@ -341,29 +341,37 @@ export async function aprobarSolicitud(req, res) {
     if (solicitudActualizada.estado === 'Aprobada') {
       // Notificar al comprador (general)
       try {
-        await enviarNotificacion(solicitud.usuarioEmail, 'aprobacion', {}, 'comprador');
+        await enviarNotificacion(solicitud.usuarioEmail, 'aprobacion', {
+          solicitudId: solicitud.id,
+          numero: solicitud.numero,
+          usuarioId: solicitud.usuarioId, // Pasar usuarioId del comprador
+        }, 'comprador');
       } catch (error) {
         console.error('Error al enviar notificación al comprador:', error);
       }
 
-      // Notificar a admin (específica)
+      // Notificar a todos los aprobadores y admin sobre la aprobación
       try {
         const { findAll: findAllUsers } = await import('../users/repository.js');
-        const adminUsers = await findAllUsers({ role: 'Administrador', activo: true });
+        const usuariosANotificar = await getAprobadoresYAdmin(findAllUsers);
         const aprobadorNombre = req.user.nombre || req.user.email?.split('@')[0] || 'Aprobador';
         
-        for (const admin of adminUsers) {
+        console.log(`[SOLICITUDES] Notificando aprobación a ${usuariosANotificar.length} usuarios`);
+        
+        for (const usuario of usuariosANotificar) {
           try {
-            await enviarNotificacion(admin.email, 'aprobada', {
+            await enviarNotificacion(usuario.email, 'aprobada', {
               aprobador: aprobadorNombre,
               numero: solicitud.numero,
+              solicitudId: solicitud.id,
+              usuarioId: usuario.id, // Pasar usuarioId del usuario
             }, 'admin');
           } catch (error) {
-            console.error(`Error al enviar notificación a admin ${admin.email}:`, error);
+            console.error(`[SOLICITUDES] Error al enviar notificación a ${usuario.email}:`, error);
           }
         }
       } catch (error) {
-        console.error('Error al enviar notificaciones a admin:', error);
+        console.error('[SOLICITUDES] Error al enviar notificaciones:', error);
       }
     }
 
@@ -430,35 +438,42 @@ export async function rechazarSolicitud(req, res) {
       detalles: `Solicitud ${solicitud.numero} rechazada: ${motivo}`,
     });
 
-    // Enviar notificación al comprador (general)
-    try {
-      await enviarNotificacion(solicitud.usuarioEmail, 'rechazo', {
-        folio: solicitud.numero,
-        motivo,
-      }, 'comprador');
-    } catch (error) {
-      console.error('Error al enviar notificación al comprador:', error);
-    }
+      // Enviar notificación al comprador (general)
+      try {
+        await enviarNotificacion(solicitud.usuarioEmail, 'rechazo', {
+          folio: solicitud.numero,
+          motivo,
+          solicitudId: solicitud.id,
+          numero: solicitud.numero,
+          usuarioId: solicitud.usuarioId, // Pasar usuarioId del comprador
+        }, 'comprador');
+      } catch (error) {
+        console.error('Error al enviar notificación al comprador:', error);
+      }
 
-    // Enviar notificación a admin (específica)
+    // Enviar notificación a todos los aprobadores y admin sobre el rechazo
     try {
       const { findAll: findAllUsers } = await import('../users/repository.js');
-      const adminUsers = await findAllUsers({ role: 'Administrador', activo: true });
+      const usuariosANotificar = await getAprobadoresYAdmin(findAllUsers);
       const aprobadorNombre = req.user.nombre || req.user.email?.split('@')[0] || 'Aprobador';
       
-      for (const admin of adminUsers) {
+      console.log(`[SOLICITUDES] Notificando rechazo a ${usuariosANotificar.length} usuarios`);
+      
+      for (const usuario of usuariosANotificar) {
         try {
-          await enviarNotificacion(admin.email, 'rechazada', {
+          await enviarNotificacion(usuario.email, 'rechazada', {
             aprobador: aprobadorNombre,
             numero: solicitud.numero,
             motivo: motivo,
+            solicitudId: solicitud.id,
+            usuarioId: usuario.id, // Pasar usuarioId del usuario
           }, 'admin');
         } catch (error) {
-          console.error(`Error al enviar notificación a admin ${admin.email}:`, error);
+          console.error(`[SOLICITUDES] Error al enviar notificación a ${usuario.email}:`, error);
         }
       }
     } catch (error) {
-      console.error('Error al enviar notificaciones a admin:', error);
+      console.error('[SOLICITUDES] Error al enviar notificaciones:', error);
     }
 
     res.json(solicitudActualizada);
@@ -512,31 +527,39 @@ export async function anularSolicitud(req, res) {
       detalles: `Solicitud ${solicitud.numero} anulada`,
     });
 
-    // Enviar notificación al comprador (general)
-    try {
-      await enviarNotificacion(solicitud.usuarioEmail, 'anulacion', {}, 'comprador');
-    } catch (error) {
-      console.error('Error al enviar notificación al comprador:', error);
-    }
+      // Enviar notificación al comprador (general)
+      try {
+        await enviarNotificacion(solicitud.usuarioEmail, 'anulacion', {
+          solicitudId: solicitud.id,
+          numero: solicitud.numero,
+          usuarioId: solicitud.usuarioId, // Pasar usuarioId del comprador
+        }, 'comprador');
+      } catch (error) {
+        console.error('Error al enviar notificación al comprador:', error);
+      }
 
-    // Enviar notificación a admin (específica)
+    // Enviar notificación a todos los aprobadores y admin sobre la anulación
     try {
       const { findAll: findAllUsers } = await import('../users/repository.js');
-      const adminUsers = await findAllUsers({ role: 'Administrador', activo: true });
+      const usuariosANotificar = await getAprobadoresYAdmin(findAllUsers);
       const usuarioNombre = solicitud.usuario || solicitud.usuarioEmail?.split('@')[0] || 'Usuario';
       
-      for (const admin of adminUsers) {
+      console.log(`[SOLICITUDES] Notificando anulación a ${usuariosANotificar.length} usuarios`);
+      
+      for (const usuario of usuariosANotificar) {
         try {
-          await enviarNotificacion(admin.email, 'anulada', {
+          await enviarNotificacion(usuario.email, 'anulada', {
             usuario: usuarioNombre,
             numero: solicitud.numero,
+            solicitudId: solicitud.id,
+            usuarioId: usuario.id, // Pasar usuarioId del usuario
           }, 'admin');
         } catch (error) {
-          console.error(`Error al enviar notificación a admin ${admin.email}:`, error);
+          console.error(`[SOLICITUDES] Error al enviar notificación a ${usuario.email}:`, error);
         }
       }
     } catch (error) {
-      console.error('Error al enviar notificaciones a admin:', error);
+      console.error('[SOLICITUDES] Error al enviar notificaciones:', error);
     }
 
     res.json(solicitudActualizada);

@@ -6,10 +6,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
-import { Plus, Search, Edit, Lock, Unlock, Shield, User, Briefcase, DollarSign, Loader2, AlertCircle } from 'lucide-react';
+import { Progress } from './ui/progress';
+import { Plus, Search, Edit, Lock, Unlock, Shield, User, Briefcase, DollarSign, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { usersAPI } from '../services/api';
 import { Alert, AlertDescription } from './ui/alert';
+import { validatePasswordStrength } from '../utils/passwordValidator';
 
 interface Usuario {
   id: string;
@@ -175,12 +177,14 @@ export function GestionUsuarios() {
       setError('');
       setSuccess('');
       setEditError('');
+      setEditSuccess('');
 
       // Validar contraseña si se está cambiando
       if (editFormData.password && editFormData.password.length > 0) {
         const strength = validatePasswordStrength(editFormData.password);
         if (strength.score < 40) {
           setEditError(strength.error || 'La contraseña es demasiado débil');
+          setUpdating(false);
           return;
         }
       }
@@ -196,21 +200,53 @@ export function GestionUsuarios() {
         updateData.password = editFormData.password;
       }
 
-      await usersAPI.update(parseInt(editingUser.id), updateData);
+      const passwordChanged = editFormData.password && editFormData.password.length > 0;
+      
+      const response = await usersAPI.update(parseInt(editingUser.id), updateData);
+      console.log('[GESTION USUARIOS] Respuesta del update:', response);
 
-      setEditSuccess('Usuario actualizado exitosamente');
+      // Usar el mensaje del backend si está disponible, o mostrar mensaje personalizado
+      let successMessage = 'Usuario actualizado exitosamente';
+      try {
+        if (response && typeof response === 'object' && response !== null) {
+          if ('message' in response && response.message) {
+            successMessage = String(response.message);
+          } else if (passwordChanged) {
+            successMessage = 'Usuario actualizado exitosamente. La contraseña ha sido cambiada.';
+          }
+        } else if (passwordChanged) {
+          successMessage = 'Usuario actualizado exitosamente. La contraseña ha sido cambiada.';
+        }
+      } catch (msgError) {
+        console.warn('[GESTION USUARIOS] Error al procesar mensaje de respuesta:', msgError);
+        if (passwordChanged) {
+          successMessage = 'Usuario actualizado exitosamente. La contraseña ha sido cambiada.';
+        }
+      }
+      
+      setEditSuccess(successMessage);
+      
+      // Cerrar el diálogo y limpiar después de un delay
       setTimeout(() => {
-        setIsEditDialogOpen(false);
-        setEditingUser(null);
-        setEditFormData({ nombre: '', email: '', password: '', rol: 'comprador' });
-        setEditPasswordStrength(null);
-        setEditSuccess('');
-        loadUsuarios();
-      }, 1500);
+        try {
+          setIsEditDialogOpen(false);
+          setEditingUser(null);
+          setEditFormData({ nombre: '', email: '', password: '', rol: 'comprador' });
+          setEditPasswordStrength(null);
+          setEditSuccess('');
+          loadUsuarios();
+        } catch (cleanupError) {
+          console.error('[GESTION USUARIOS] Error en cleanup:', cleanupError);
+          // Forzar recarga de usuarios aunque haya error en cleanup
+          loadUsuarios().catch(e => console.error('Error al recargar usuarios:', e));
+        }
+      }, 2000);
     } catch (err: any) {
+      console.error('[GESTION USUARIOS] Error al actualizar usuario:', err);
       const errorMsg = err.message || 'Error al actualizar usuario';
       setError(errorMsg);
       setEditError(errorMsg);
+      setEditSuccess('');
     } finally {
       setUpdating(false);
     }
@@ -308,19 +344,72 @@ export function GestionUsuarios() {
                     setCreateError('');
                   }}
                 />
-                {createPasswordStrength && (
-                  <div className="space-y-1">
-                    <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full transition-all ${
-                          createPasswordStrength.color === 'red' ? 'bg-red-500' :
-                          createPasswordStrength.color === 'orange' ? 'bg-orange-500' : 'bg-green-500'
-                        }`}
-                        style={{ width: `${createPasswordStrength.score}%` }}
+                {formData.password.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                        <span>Fortaleza de contraseña</span>
+                        <span className={`font-medium ${
+                          createPasswordStrength?.color === 'red' ? 'text-red-600' :
+                          createPasswordStrength?.color === 'orange' ? 'text-orange-600' : 'text-green-600'
+                        }`}>
+                          {createPasswordStrength?.level === 'weak' ? 'Débil' :
+                           createPasswordStrength?.level === 'medium' ? 'Media' : 'Fuerte'}
+                        </span>
+                      </div>
+                      <Progress 
+                        value={createPasswordStrength?.score || 0} 
+                        className="h-2"
+                        style={{
+                          '--progress-color': createPasswordStrength?.color === 'red' ? '#ef4444' :
+                                            createPasswordStrength?.color === 'orange' ? '#f59e0b' : '#10b981'
+                        } as React.CSSProperties}
                       />
                     </div>
-                    {createPasswordStrength.error && (
-                      <p className="text-xs text-red-600">{createPasswordStrength.error}</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className={`flex items-center gap-1.5 ${
+                        createPasswordStrength?.requirements.length ? 'text-green-600' : 'text-gray-400'
+                      }`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          createPasswordStrength?.requirements.length ? 'bg-green-500' : 'bg-gray-300'
+                        }`} />
+                        <span>Mínimo 8 caracteres</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${
+                        createPasswordStrength?.requirements.uppercase ? 'text-green-600' : 'text-gray-400'
+                      }`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          createPasswordStrength?.requirements.uppercase ? 'bg-green-500' : 'bg-gray-300'
+                        }`} />
+                        <span>Mayúscula</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${
+                        createPasswordStrength?.requirements.lowercase ? 'text-green-600' : 'text-gray-400'
+                      }`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          createPasswordStrength?.requirements.lowercase ? 'bg-green-500' : 'bg-gray-300'
+                        }`} />
+                        <span>Minúscula</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${
+                        createPasswordStrength?.requirements.number ? 'text-green-600' : 'text-gray-400'
+                      }`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          createPasswordStrength?.requirements.number ? 'bg-green-500' : 'bg-gray-300'
+                        }`} />
+                        <span>Número</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${
+                        createPasswordStrength?.requirements.special ? 'text-green-600' : 'text-gray-400'
+                      }`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          createPasswordStrength?.requirements.special ? 'bg-green-500' : 'bg-gray-300'
+                        }`} />
+                        <span>Carácter especial</span>
+                      </div>
+                    </div>
+                    {createPasswordStrength?.error && (
+                      <p className="text-xs text-red-600 mt-1">{createPasswordStrength.error}</p>
                     )}
                   </div>
                 )}
@@ -479,18 +568,18 @@ export function GestionUsuarios() {
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Rol</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Fecha Creación</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nombre</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Rol</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Fecha Creación</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
                 {filteredUsuarios.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
@@ -549,8 +638,8 @@ export function GestionUsuarios() {
                 );
               })
             )}
-              </TableBody>
-            </Table>
+            </TableBody>
+          </Table>
           )}
         </CardContent>
       </Card>
@@ -602,29 +691,82 @@ export function GestionUsuarios() {
                   setEditError('');
                 }}
               />
-              {editPasswordStrength && (
-                <div className="space-y-1">
-                  <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all ${
-                        editPasswordStrength.color === 'red' ? 'bg-red-500' :
-                        editPasswordStrength.color === 'orange' ? 'bg-orange-500' : 'bg-green-500'
-                      }`}
-                      style={{ width: `${editPasswordStrength.score}%` }}
+              {editFormData.password.length > 0 && (
+                <div className="space-y-2 mt-2">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>Fortaleza de contraseña</span>
+                      <span className={`font-medium ${
+                        editPasswordStrength?.color === 'red' ? 'text-red-600' :
+                        editPasswordStrength?.color === 'orange' ? 'text-orange-600' : 'text-green-600'
+                      }`}>
+                        {editPasswordStrength?.level === 'weak' ? 'Débil' :
+                         editPasswordStrength?.level === 'medium' ? 'Media' : 'Fuerte'}
+                      </span>
+                    </div>
+                    <Progress 
+                      value={editPasswordStrength?.score || 0} 
+                      className="h-2"
+                      style={{
+                        '--progress-color': editPasswordStrength?.color === 'red' ? '#ef4444' :
+                                          editPasswordStrength?.color === 'orange' ? '#f59e0b' : '#10b981'
+                      } as React.CSSProperties}
                     />
                   </div>
-                  {editPasswordStrength.error && (
-                    <p className="text-xs text-red-600">{editPasswordStrength.error}</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className={`flex items-center gap-1.5 ${
+                      editPasswordStrength?.requirements.length ? 'text-green-600' : 'text-gray-400'
+                    }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        editPasswordStrength?.requirements.length ? 'bg-green-500' : 'bg-gray-300'
+                      }`} />
+                      <span>Mínimo 8 caracteres</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${
+                      editPasswordStrength?.requirements.uppercase ? 'text-green-600' : 'text-gray-400'
+                    }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        editPasswordStrength?.requirements.uppercase ? 'bg-green-500' : 'bg-gray-300'
+                      }`} />
+                      <span>Mayúscula</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${
+                      editPasswordStrength?.requirements.lowercase ? 'text-green-600' : 'text-gray-400'
+                    }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        editPasswordStrength?.requirements.lowercase ? 'bg-green-500' : 'bg-gray-300'
+                      }`} />
+                      <span>Minúscula</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${
+                      editPasswordStrength?.requirements.number ? 'text-green-600' : 'text-gray-400'
+                    }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        editPasswordStrength?.requirements.number ? 'bg-green-500' : 'bg-gray-300'
+                      }`} />
+                      <span>Número</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${
+                      editPasswordStrength?.requirements.special ? 'text-green-600' : 'text-gray-400'
+                    }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        editPasswordStrength?.requirements.special ? 'bg-green-500' : 'bg-gray-300'
+                      }`} />
+                      <span>Carácter especial</span>
+                    </div>
+                  </div>
+                  {editPasswordStrength?.error && (
+                    <p className="text-xs text-red-600 mt-1">{editPasswordStrength.error}</p>
                   )}
                 </div>
               )}
-              {editError && (
-                <p className="text-xs text-red-600">{editError}</p>
-              )}
-              {!editPasswordStrength && (
+              {editFormData.password.length === 0 && (
                 <p className="text-xs text-muted-foreground">
                   Solo completa este campo si deseas cambiar la contraseña
                 </p>
+              )}
+              {editError && (
+                <p className="text-xs text-red-600">{editError}</p>
               )}
             </div>
             <div className="space-y-2">
@@ -679,15 +821,34 @@ export function GestionUsuarios() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setIsEditDialogOpen(false);
-              setEditError('');
-              setEditSuccess('');
-              setEditPasswordStrength(null);
-            }} disabled={updating}>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                try {
+                  setIsEditDialogOpen(false);
+                  setEditError('');
+                  setEditSuccess('');
+                  setEditPasswordStrength(null);
+                  setEditingUser(null);
+                  setEditFormData({ nombre: '', email: '', password: '', rol: 'comprador' });
+                } catch (e) {
+                  console.error('Error al cerrar diálogo:', e);
+                }
+              }} 
+              disabled={updating}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleUpdateUser} disabled={updating || (editFormData.password.length > 0 && editPasswordStrength && editPasswordStrength.score < 40)}>
+            <Button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUpdateUser().catch((err) => {
+                  console.error('Error no capturado en handleUpdateUser:', err);
+                });
+              }} 
+              disabled={updating || (editFormData.password.length > 0 && editPasswordStrength && editPasswordStrength.score < 40)}
+            >
               {updating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

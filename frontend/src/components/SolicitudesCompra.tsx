@@ -73,6 +73,13 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
   const [prioridad, setPrioridad] = useState('media');
   const [justificacion, setJustificacion] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  
+  // Validation state
+  const [validationErrors, setValidationErrors] = useState<{
+    descripcion?: string;
+    monto?: string;
+    categoria?: string;
+  }>({});
 
   const canCreateSolicitud = userRole === 'admin' || userRole === 'comprador';
 
@@ -99,17 +106,44 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
     }
   };
 
+  // Validación en tiempo real
+  const validateForm = () => {
+    const errors: { descripcion?: string; monto?: string; categoria?: string } = {};
+    
+    if (!descripcion.trim()) {
+      errors.descripcion = 'La descripción es requerida';
+    } else if (descripcion.trim().length < 10) {
+      errors.descripcion = 'La descripción debe tener al menos 10 caracteres';
+    }
+    
+    if (!monto.trim()) {
+      errors.monto = 'El monto es requerido';
+    } else {
+      const montoNum = parseFloat(monto);
+      if (isNaN(montoNum)) {
+        errors.monto = 'El monto debe ser un número válido';
+      } else if (montoNum <= 0) {
+        errors.monto = 'El monto debe ser mayor a 0';
+      } else if (montoNum > 10000000) {
+        errors.monto = 'El monto no puede ser mayor a $10,000,000';
+      }
+    }
+    
+    if (!categoria) {
+      errors.categoria = 'La categoría es requerida';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleCrearSolicitud = async () => {
-    if (!descripcion || !monto || !categoria) {
-      setError('Por favor completa todos los campos requeridos');
+    if (!validateForm()) {
+      setError('Por favor corrige los errores en el formulario');
       return;
     }
 
     const montoNum = parseFloat(monto);
-    if (isNaN(montoNum) || montoNum <= 0) {
-      setError('El monto debe ser un número positivo');
-      return;
-    }
 
     try {
       setSubmitting(true);
@@ -128,6 +162,8 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
       setCategoria('');
       setPrioridad('media');
       setJustificacion('');
+      setValidationErrors({});
+      setError('');
       setIsDialogOpen(false);
 
       // Reload solicitudes
@@ -301,14 +337,33 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
                       id="descripcion"
                       placeholder="Descripción breve de la compra"
                       value={descripcion}
-                      onChange={(e) => setDescripcion(e.target.value)}
+                      onChange={(e) => {
+                        setDescripcion(e.target.value);
+                        if (validationErrors.descripcion) {
+                          validateForm();
+                        }
+                      }}
+                      onBlur={validateForm}
                       disabled={submitting}
+                      className={validationErrors.descripcion ? 'border-red-500' : ''}
                     />
+                    {validationErrors.descripcion && (
+                      <p className="text-sm text-red-600">{validationErrors.descripcion}</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="categoria">Categoría *</Label>
-                    <Select value={categoria} onValueChange={setCategoria} disabled={submitting}>
-                      <SelectTrigger>
+                    <Select 
+                      value={categoria} 
+                      onValueChange={(value) => {
+                        setCategoria(value);
+                        if (validationErrors.categoria) {
+                          validateForm();
+                        }
+                      }} 
+                      disabled={submitting}
+                    >
+                      <SelectTrigger className={validationErrors.categoria ? 'border-red-500' : ''}>
                         <SelectValue placeholder="Seleccionar categoría" />
                       </SelectTrigger>
                       <SelectContent>
@@ -317,6 +372,9 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
                         ))}
                       </SelectContent>
                     </Select>
+                    {validationErrors.categoria && (
+                      <p className="text-sm text-red-600">{validationErrors.categoria}</p>
+                    )}
                   </div>
                 </div>
 
@@ -328,11 +386,21 @@ export function SolicitudesCompra({ userRole }: SolicitudesCompraProps) {
                       type="number"
                       placeholder="0.00"
                       value={monto}
-                      onChange={(e) => setMonto(e.target.value)}
+                      onChange={(e) => {
+                        setMonto(e.target.value);
+                        if (validationErrors.monto) {
+                          validateForm();
+                        }
+                      }}
+                      onBlur={validateForm}
                       disabled={submitting}
                       min="0"
                       step="0.01"
+                      className={validationErrors.monto ? 'border-red-500' : ''}
                     />
+                    {validationErrors.monto && (
+                      <p className="text-sm text-red-600">{validationErrors.monto}</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="prioridad">Prioridad</Label>

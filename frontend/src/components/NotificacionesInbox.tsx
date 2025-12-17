@@ -3,27 +3,31 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Mail, CheckCircle2, XCircle, AlertCircle, Clock, MessageCircle, Loader2 } from 'lucide-react';
-import { UserRole } from '../App';
-import { solicitudesAPI, notificacionesAPI } from '../services/api';
+import { UserRole, User } from '../App';
+import { notificacionesAPI } from '../services/api';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
+import { toast } from 'sonner';
 
 interface NotificacionesInboxProps {
   userRole: UserRole;
+  user?: User;
 }
 
 interface Notificacion {
   id: string;
-  tipo: 'creacion' | 'aprobacion' | 'rechazo' | 'anulacion';
+  tipo: string;
+  evento: string;
+  titulo: string;
   mensaje: string;
-  fecha: string;
+  fechaCreacion: string;
   solicitudNumero?: string;
-  solicitudId?: number;
+  solicitudId?: number | null;
   leida: boolean;
 }
 
-export function NotificacionesInbox({ userRole }: NotificacionesInboxProps) {
+export function NotificacionesInbox({ userRole, user }: NotificacionesInboxProps) {
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false);
@@ -34,52 +38,54 @@ export function NotificacionesInbox({ userRole }: NotificacionesInboxProps) {
   useEffect(() => {
     if (userRole === 'comprador') {
       loadNotificaciones();
+      // Recargar cada 30 segundos
+      const interval = setInterval(() => {
+        loadNotificaciones();
+      }, 30000);
+      return () => clearInterval(interval);
     }
   }, [userRole]);
 
   const loadNotificaciones = async () => {
     try {
       setLoading(true);
-      // Obtener todas las solicitudes del comprador para generar notificaciones
-      const solicitudes = await solicitudesAPI.getAll();
+      console.log('[NOTIFICACIONES INBOX] Cargando notificaciones para comprador...');
+      // Obtener notificaciones desde la base de datos
+      const notifs = await notificacionesAPI.getAll({ tipo: 'comprador' });
+      console.log('[NOTIFICACIONES INBOX] Notificaciones recibidas:', notifs);
       
-      // Generar notificaciones basadas en el estado de las solicitudes
-      const notifs: Notificacion[] = solicitudes.map((s: any) => {
-        let tipo: 'creacion' | 'aprobacion' | 'rechazo' | 'anulacion' = 'creacion';
-        let mensaje = '';
+      // Mapear al formato esperado
+      const notificacionesMapeadas: Notificacion[] = notifs.map((n: any) => ({
+        id: n.id.toString(),
+        tipo: n.tipo,
+        evento: n.evento,
+        titulo: n.titulo,
+        mensaje: n.mensaje,
+        fechaCreacion: n.fechaCreacion,
+        solicitudNumero: n.solicitudNumero,
+        solicitudId: n.solicitudId,
+        leida: n.leida,
+      }));
 
-        if (s.estado === 'Aprobada') {
-          tipo = 'aprobacion';
-          mensaje = `¡Tu solicitud ${s.numero} ha sido aprobada!`;
-        } else if (s.estado === 'Rechazada') {
-          tipo = 'rechazo';
-          mensaje = `Tu solicitud ${s.numero} fue rechazada.${s.motivoRechazo ? ` Motivo: ${s.motivoRechazo}` : ''}`;
-        } else if (s.estado === 'Anulada') {
-          tipo = 'anulacion';
-          mensaje = `Tu solicitud ${s.numero} ha sido anulada.`;
-        } else {
-          tipo = 'creacion';
-          mensaje = `Tu solicitud ${s.numero} ha sido creada correctamente.`;
-        }
-
-        return {
-          id: s.id.toString(),
-          tipo,
-          mensaje,
-          fecha: s.fechaAprobacion || s.fechaRechazo || s.fechaAnulacion || s.fecha,
-          solicitudNumero: s.numero,
-          solicitudId: s.id,
-          leida: false,
-        };
-      });
-
-      // Ordenar por fecha (más recientes primero)
-      notifs.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
-      setNotificaciones(notifs);
-    } catch (error) {
-      console.error('Error al cargar notificaciones:', error);
+      console.log('[NOTIFICACIONES INBOX] Notificaciones mapeadas:', notificacionesMapeadas);
+      setNotificaciones(notificacionesMapeadas);
+    } catch (error: any) {
+      console.error('[NOTIFICACIONES INBOX] Error al cargar notificaciones:', error);
+      toast.error(error.message || 'Error al cargar notificaciones');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMarcarComoLeida = async (id: string) => {
+    try {
+      await notificacionesAPI.marcarComoLeida(id);
+      // Actualizar estado local
+      setNotificaciones(prev => 
+        prev.map(n => n.id === id ? { ...n, leida: true } : n)
+      );
+    } catch (error) {
+      console.error('Error al marcar como leída:', error);
     }
   };
 
@@ -93,44 +99,62 @@ export function NotificacionesInbox({ userRole }: NotificacionesInboxProps) {
 
     try {
       setEnviandoContacto(true);
-      // Enviar notificación a admin y aprobadores
+      console.log('[NOTIFICACIONES INBOX] Enviando consulta:', {
+        solicitudNumero: selectedSolicitud.numero,
+        solicitudId: selectedSolicitud.id,
+        mensaje: mensajeContacto,
+      });
+      
+      // Enviar notificación a admin y aprobadores usando el endpoint POST /notificaciones
+      // El backend manejará el envío a todos los aprobadores y admin
+      const compradorEmail = user?.email || 'comprador@proveeduria.com';
+      const compradorNombre = user?.nombre || 'Comprador';
+      
       await notificacionesAPI.enviar('admin@proveeduria.com', 'contacto', {
         solicitudNumero: selectedSolicitud.numero,
+        solicitudId: selectedSolicitud.id,
         mensaje: mensajeContacto,
+        compradorEmail: compradorEmail,
+        compradorNombre: compradorNombre,
       });
       
       setMensajeContacto('');
       setIsContactDialogOpen(false);
       setSelectedSolicitud(null);
-      // Aquí podrías mostrar un mensaje de éxito
-    } catch (error) {
-      console.error('Error al enviar contacto:', error);
+      toast.success('Mensaje enviado exitosamente. Te contactaremos pronto.');
+    } catch (error: any) {
+      console.error('[NOTIFICACIONES INBOX] Error al enviar contacto:', error);
+      toast.error(error.message || 'Error al enviar mensaje');
     } finally {
       setEnviandoContacto(false);
     }
   };
 
-  const getIcono = (tipo: string) => {
-    switch (tipo) {
+  const getIcono = (evento: string) => {
+    switch (evento) {
       case 'aprobacion':
         return CheckCircle2;
       case 'rechazo':
         return XCircle;
       case 'anulacion':
         return AlertCircle;
-      default:
+      case 'creacion':
         return Clock;
+      default:
+        return Mail;
     }
   };
 
-  const getColor = (tipo: string) => {
-    switch (tipo) {
+  const getColor = (evento: string) => {
+    switch (evento) {
       case 'aprobacion':
         return 'text-green-600 bg-green-50 border-green-200';
       case 'rechazo':
         return 'text-red-600 bg-red-50 border-red-200';
       case 'anulacion':
         return 'text-gray-600 bg-gray-50 border-gray-200';
+      case 'creacion':
+        return 'text-blue-600 bg-blue-50 border-blue-200';
       default:
         return 'text-blue-600 bg-blue-50 border-blue-200';
     }
@@ -176,11 +200,15 @@ export function NotificacionesInbox({ userRole }: NotificacionesInboxProps) {
       ) : (
         <div className="space-y-4">
           {notificaciones.map((notif) => {
-            const Icono = getIcono(notif.tipo);
-            const colorClass = getColor(notif.tipo);
+            const Icono = getIcono(notif.evento);
+            const colorClass = getColor(notif.evento);
 
             return (
-              <Card key={notif.id} className={`border ${colorClass}`}>
+              <Card 
+                key={notif.id} 
+                className={`border ${colorClass} ${!notif.leida ? 'ring-2 ring-blue-200' : ''} cursor-pointer hover:shadow-md transition-shadow`}
+                onClick={() => !notif.leida && handleMarcarComoLeida(notif.id)}
+              >
                 <CardContent className="p-6">
                   <div className="flex items-start gap-4">
                     <div className={`p-3 rounded-lg ${colorClass}`}>
@@ -189,9 +217,10 @@ export function NotificacionesInbox({ userRole }: NotificacionesInboxProps) {
                     <div className="flex-1">
                       <div className="flex items-start justify-between">
                         <div>
-                          <p className="font-medium">{notif.mensaje}</p>
-                          <p className="text-sm text-gray-500 mt-1">
-                            {new Date(notif.fecha).toLocaleDateString('es-ES', {
+                          <p className="font-medium">{notif.titulo}</p>
+                          <p className="text-sm text-gray-600 mt-1">{notif.mensaje}</p>
+                          <p className="text-xs text-gray-500 mt-2">
+                            {new Date(notif.fechaCreacion).toLocaleDateString('es-ES', {
                               year: 'numeric',
                               month: 'long',
                               day: 'numeric',
@@ -211,10 +240,13 @@ export function NotificacionesInbox({ userRole }: NotificacionesInboxProps) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleContactar({
-                              id: notif.solicitudId!,
-                              numero: notif.solicitudNumero!,
-                            })}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleContactar({
+                                id: notif.solicitudId!,
+                                numero: notif.solicitudNumero!,
+                              });
+                            }}
                           >
                             <MessageCircle className="h-4 w-4 mr-2" />
                             ¿Tienes una duda? Haz clic aquí

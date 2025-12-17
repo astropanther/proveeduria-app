@@ -186,6 +186,28 @@ export const notificacionesAPI = {
       body: JSON.stringify({ email, evento, ...detalles }),
     });
   },
+  getAll: async (filters?: { leida?: boolean; tipo?: string; evento?: string; limite?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.leida !== undefined) params.append('leida', filters.leida.toString());
+    if (filters?.tipo) params.append('tipo', filters.tipo);
+    if (filters?.evento) params.append('evento', filters.evento);
+    if (filters?.limite) params.append('limite', filters.limite.toString());
+    const query = params.toString();
+    return request<any[]>(`/notificaciones${query ? `?${query}` : ''}`);
+  },
+  getNoLeidas: async () => {
+    return request<{ count: number }>('/notificaciones/no-leidas');
+  },
+  marcarComoLeida: async (id: string) => {
+    return request<any>(`/notificaciones/${id}/leida`, {
+      method: 'PATCH',
+    });
+  },
+  marcarTodasComoLeidas: async () => {
+    return request<{ count: number }>('/notificaciones/marcar-todas-leidas', {
+      method: 'PATCH',
+    });
+  },
 };
 
 // Reportes API (PB-14)

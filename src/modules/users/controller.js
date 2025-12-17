@@ -220,9 +220,15 @@ export async function updateUser(req, res) {
     // eslint-disable-next-line no-unused-vars
     const { password_hash, ...userWithoutPassword } = updatedUser;
 
+    // Determinar si se cambió la contraseña
+    const passwordChanged = updates.password !== undefined;
+
     return res.status(200).json({
-      message: 'Usuario actualizado exitosamente',
+      message: passwordChanged 
+        ? 'Usuario actualizado exitosamente. La contraseña ha sido cambiada.'
+        : 'Usuario actualizado exitosamente',
       user: userWithoutPassword,
+      passwordChanged: passwordChanged,
     });
   } catch (error) {
     return res.status(500).json({

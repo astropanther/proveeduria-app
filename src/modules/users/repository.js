@@ -162,20 +162,18 @@ export async function update(id, updates) {
 
     fields.push('updated_at = GETDATE()');
 
+    // No usar OUTPUT INSERTED.* porque hay triggers en la tabla
+    // Hacer UPDATE y luego SELECT para obtener el registro actualizado
     const sql = `
       UPDATE users
       SET ${fields.join(', ')}
-      OUTPUT INSERTED.*
       WHERE id = @id
     `;
 
-    const result = await query(sql, params);
+    await query(sql, params);
     
-    if (!result.recordset || result.recordset.length === 0) {
-      return null;
-    }
-    
-    return result.recordset[0];
+    // Obtener el registro actualizado
+    return await findById(id);
   } catch (error) {
     console.error('Error al actualizar usuario:', error);
     throw error;

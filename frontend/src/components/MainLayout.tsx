@@ -8,8 +8,8 @@ import { GestionUsuarios } from './GestionUsuarios';
 import { SolicitudesCompra } from './SolicitudesCompra';
 import { AprobacionSolicitudes } from './AprobacionSolicitudes';
 import { Reportes } from './Reportes';
-import { PruebaNotificaciones } from './PruebaNotificaciones';
 import { NotificacionesInbox } from './NotificacionesInbox';
+import { NotificacionesAprobador } from './NotificacionesAprobador';
 import { User } from '../App';
 
 interface MainLayoutProps {
@@ -51,9 +51,14 @@ export function MainLayout({ user, onLogout, isDarkMode, onToggleDarkMode }: Mai
         return <Reportes userRole={user.rol} />;
       case 'notificaciones':
         if (user.rol === 'comprador') {
-          return <NotificacionesInbox userRole={user.rol} />;
+          return <NotificacionesInbox userRole={user.rol} user={user} />;
         }
-        return <PruebaNotificaciones userRole={user.rol} />;
+        // Aprobadores y admin ven el inbox de notificaciones
+        if (user.rol === 'aprobador_jefe' || user.rol === 'aprobador_financiero' || user.rol === 'admin') {
+          return <NotificacionesAprobador userRole={user.rol} />;
+        }
+        // Fallback para otros roles
+        return <NotificacionesInbox userRole={user.rol} user={user} />;
       default:
         return <DashboardAdmin />;
     }

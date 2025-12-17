@@ -8,9 +8,14 @@ import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getAllSolicitudes } from '../solicitudes/repository.js';
+import { loadEnv } from '../../config/env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const env = loadEnv();
+const USE_DB = env.USE_DATABASE === true;
 
 // Crear carpeta de reportes si no existe - usar path absoluto desde la raíz del proyecto
 const reportsDir = path.resolve(process.cwd(), 'reports');
@@ -27,39 +32,64 @@ console.log('Reports directory configurado en:', reportsDir);
 export async function generarReportes(filtros = {}) {
   const { estado, fechaInicio, fechaFin, formato = 'ambos' } = filtros;
 
-  // Datos simulados para testing - usar fechas que coincidan con los filtros por defecto (2024-06-01 a 2024-06-30)
-  let solicitudes = [
-    { id: 1, folio: 'SOL-2024-045', numero: 'SOL-2024-045', usuario: 'Juan Pérez', categoria: 'Equipamiento', estado: 'Pendiente', fecha: '2024-06-15', monto: 5200 },
-    { id: 2, folio: 'SOL-2024-044', numero: 'SOL-2024-044', usuario: 'Ana González', categoria: 'Software', estado: 'Aprobada', fecha: '2024-06-14', monto: 12800 },
-    { id: 3, folio: 'SOL-2024-043', numero: 'SOL-2024-043', usuario: 'Carlos Ruiz', categoria: 'Materiales', estado: 'Aprobada', fecha: '2024-06-14', monto: 8450 },
-    { id: 4, folio: 'SOL-2024-042', numero: 'SOL-2024-042', usuario: 'María López', categoria: 'Mobiliario', estado: 'Rechazada', fecha: '2024-06-13', monto: 6900 },
-    { id: 5, folio: 'SOL-2024-041', numero: 'SOL-2024-041', usuario: 'Luis Martín', categoria: 'Tecnología', estado: 'Aprobada', fecha: '2024-06-13', monto: 15200 },
-    { id: 6, folio: 'SOL-2024-040', numero: 'SOL-2024-040', usuario: 'Juan Pérez', categoria: 'Servicios', estado: 'Aprobada', fecha: '2024-06-12', monto: 1200 },
-    { id: 7, folio: 'SOL-2024-039', numero: 'SOL-2024-039', usuario: 'Ana González', categoria: 'Herramientas', estado: 'Anulada', fecha: '2024-06-11', monto: 3450 },
-    { id: 8, folio: 'SOL-2024-038', numero: 'SOL-2024-038', usuario: 'Carlos Ruiz', categoria: 'Equipamiento', estado: 'Pendiente', fecha: '2024-06-25', monto: 2200 },
-  ];
-
-  // Aplicar filtros
-  if (estado && estado !== 'todos') {
-    // Mapear estados del frontend a los del backend
-    const estadoMap = {
-      'pendiente': 'Pendiente',
-      'aprobada': 'Aprobada',
-      'rechazada': 'Rechazada',
-      'anulada': 'Anulada',
-    };
-    const estadoBackend = estadoMap[estado.toLowerCase()] || estado;
-    solicitudes = solicitudes.filter(s => s.estado === estadoBackend);
-  }
-  if (fechaInicio) {
-    solicitudes = solicitudes.filter(s => s.fecha >= fechaInicio);
-  }
-  if (fechaFin) {
-    solicitudes = solicitudes.filter(s => s.fecha <= fechaFin);
-  }
+  // Obtener datos reales de la base de datos
+  let solicitudes = [];
   
-  console.log('Filtros aplicados:', { estado, fechaInicio, fechaFin });
-  console.log('Solicitudes después de filtros:', solicitudes.length);
+  try {
+    const filters = {};
+    if (estado && estado !== 'todos') {
+      // Mapear estados del frontend a los del backend
+      const estadoMap = {
+        'pendiente': 'Pendiente',
+        'aprobada': 'Aprobada',
+        'rechazada': 'Rechazada',
+        'anulada': 'Anulada',
+      };
+      filters.estado = estadoMap[estado.toLowerCase()] || estado;
+    }
+    
+    // Obtener todas las solicitudes desde la base de datos
+    const todasLasSolicitudes = await getAllSolicitudes(filters);
+    
+    // Formatear solicitudes para los reportes
+    solicitudes = todasLasSolicitudes.map(s => {
+      // Formatear fecha correctamente
+      let fechaFormateada = new Date().toISOString().split('T')[0];
+      if (s.fecha) {
+        fechaFormateada = new Date(s.fecha).toISOString().split('T')[0];
+      } else if (s.fechaCreacion) {
+        fechaFormateada = new Date(s.fechaCreacion).toISOString().split('T')[0];
+      }
+      
+      return {
+        id: s.id,
+        folio: s.numero || `SOL-${s.id}`,
+        numero: s.numero || `SOL-${s.id}`,
+        usuario: s.usuario || 'N/A',
+        categoria: s.categoria || 'N/A',
+        estado: s.estado || 'Pendiente',
+        fecha: fechaFormateada,
+        monto: parseFloat(s.monto || 0),
+        descripcion: s.descripcion || '',
+      };
+    });
+
+    // Aplicar filtros de fecha
+    if (fechaInicio) {
+      solicitudes = solicitudes.filter(s => s.fecha >= fechaInicio);
+    }
+    if (fechaFin) {
+      solicitudes = solicitudes.filter(s => s.fecha <= fechaFin);
+    }
+    
+    console.log('Filtros aplicados:', { estado, fechaInicio, fechaFin });
+    console.log('Solicitudes obtenidas de BD:', todasLasSolicitudes.length);
+    console.log('Solicitudes después de filtros:', solicitudes.length);
+  } catch (error) {
+    console.error('Error al obtener solicitudes para reporte:', error);
+    // Si hay error, usar array vacío en lugar de fallar completamente
+    solicitudes = [];
+  }
 
   // Crear timestamp más simple sin caracteres problemáticos
   const now = new Date();
@@ -105,25 +135,25 @@ async function generarReporteExcel(datos, nombreArchivo = 'reporte_solicitudes')
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Solicitudes');
 
-  // Definir columnas
+  // Definir columnas (matching frontend headers)
   sheet.columns = [
-    { header: 'ID', key: 'id', width: 10 },
-    { header: 'Folio', key: 'folio', width: 20 },
-    { header: 'Estado', key: 'estado', width: 15 },
-    { header: 'Fecha', key: 'fecha', width: 15 },
+    { header: 'N° Solicitud', key: 'numero', width: 20 },
+    { header: 'Usuario', key: 'usuario', width: 25 },
+    { header: 'Categoría', key: 'categoria', width: 20 },
     { header: 'Monto', key: 'monto', width: 15 },
-    { header: 'Descripción', key: 'descripcion', width: 40 },
+    { header: 'Fecha', key: 'fecha', width: 15 },
+    { header: 'Estado', key: 'estado', width: 15 },
   ];
 
   // Agregar datos
   datos.forEach((solicitud) => {
     sheet.addRow({
-      id: solicitud.id || '',
-      folio: solicitud.folio || '',
-      estado: solicitud.estado || '',
+      numero: solicitud.numero || solicitud.folio || '',
+      usuario: solicitud.usuario || '',
+      categoria: solicitud.categoria || '',
+      monto: solicitud.monto || 0,
       fecha: solicitud.fecha || '',
-      monto: solicitud.monto || '',
-      descripcion: solicitud.descripcion || '',
+      estado: solicitud.estado || '',
     });
   });
 
@@ -200,7 +230,8 @@ async function generarReportePDF(datos, nombreArchivo = 'reporte_solicitudes', f
     // Configuración de la tabla
     const tableTop = pdf.y;
     const itemHeight = 28;
-    const pageHeight = pdf.page.height - 100;
+    const footerHeight = 30;
+    const pageHeight = pdf.page.height - footerHeight - 20; // Altura disponible menos pie de página y margen
 
     // Función para dibujar encabezados de columnas
     function drawTableHeaders(y) {
@@ -231,6 +262,14 @@ async function generarReportePDF(datos, nombreArchivo = 'reporte_solicitudes', f
       return { startX, columnWidths, headers };
     }
 
+    // Función para dibujar pie de página
+    function drawFooter() {
+      const footerY = pdf.page.height - footerHeight;
+      pdf.fontSize(8).font('Helvetica').fillColor(colors.textMuted);
+      pdf.text(`Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES')}`, 50, footerY, { align: 'left' });
+      pdf.text('ProcureHub - Sistema de Gestión de Proveeduría', 50, footerY + 10, { align: 'left' });
+    }
+
     // Encabezados de la tabla
     const tableConfig = drawTableHeaders(tableTop);
     const { startX, columnWidths, headers } = tableConfig;
@@ -250,8 +289,10 @@ async function generarReportePDF(datos, nombreArchivo = 'reporte_solicitudes', f
     // Datos de la tabla
     let currentX = startX; // Declarar currentX fuera del forEach
     datos.forEach((solicitud, index) => {
-      // Verificar si necesitamos una nueva página
-      if (currentY > pageHeight) {
+      // Verificar si necesitamos una nueva página ANTES de dibujar la fila
+      // Verificar si la fila cabe en la página actual
+      if (currentY + itemHeight > pageHeight && index > 0) {
+        // Agregar nueva página solo si hay más datos
         pdf.addPage();
         currentY = 50;
         
@@ -308,11 +349,8 @@ async function generarReportePDF(datos, nombreArchivo = 'reporte_solicitudes', f
       currentY += itemHeight;
     });
 
-    // Pie de página (estilo discreto)
-    pdf.fontSize(8).font('Helvetica').fillColor(colors.textMuted);
-    const footerY = pdf.page.height - 40;
-    pdf.text(`Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES')}`, 50, footerY, { align: 'left' });
-    pdf.text('ProcureHub - Sistema de Gestión de Proveeduría', 50, footerY + 10, { align: 'left' });
+    // Dibujar pie de página en la última página
+    drawFooter();
 
     pdf.end();
 

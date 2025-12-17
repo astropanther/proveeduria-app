@@ -105,7 +105,7 @@ GO
 
 -- =============================================
 -- Tabla: notificaciones_log
--- PB-13: Envío de Notificaciones Automáticas
+-- PB-13: Envío de Notificaciones Automáticas (Log de envíos)
 -- =============================================
 IF OBJECT_ID('notificaciones_log', 'U') IS NOT NULL
     DROP TABLE notificaciones_log;
@@ -124,6 +124,36 @@ GO
 
 CREATE INDEX IX_notificaciones_log_email ON notificaciones_log(email);
 CREATE INDEX IX_notificaciones_log_fecha ON notificaciones_log(fecha_envio);
+GO
+
+-- =============================================
+-- Tabla: notificaciones
+-- PB-13: Notificaciones Persistentes para Inbox
+-- =============================================
+IF OBJECT_ID('notificaciones', 'U') IS NOT NULL
+    DROP TABLE notificaciones;
+GO
+
+CREATE TABLE notificaciones (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    usuario_id INT NOT NULL,
+    tipo NVARCHAR(50) NOT NULL, -- 'comprador', 'aprobador', 'admin'
+    evento NVARCHAR(50) NOT NULL, -- 'creacion', 'aprobacion', 'rechazo', 'anulacion', 'nueva_solicitud', 'contacto'
+    titulo NVARCHAR(255) NOT NULL,
+    mensaje NVARCHAR(1000) NOT NULL,
+    leida BIT NOT NULL DEFAULT 0,
+    solicitud_id INT NULL, -- ID de la solicitud relacionada (si aplica)
+    detalles NVARCHAR(MAX) NULL, -- JSON con detalles adicionales
+    fecha_creacion DATETIME2 NOT NULL DEFAULT GETDATE(),
+    FOREIGN KEY (usuario_id) REFERENCES users(id),
+    FOREIGN KEY (solicitud_id) REFERENCES solicitudes(id) ON DELETE CASCADE
+);
+GO
+
+CREATE INDEX IX_notificaciones_usuario_id ON notificaciones(usuario_id);
+CREATE INDEX IX_notificaciones_leida ON notificaciones(leida);
+CREATE INDEX IX_notificaciones_fecha ON notificaciones(fecha_creacion);
+CREATE INDEX IX_notificaciones_tipo ON notificaciones(tipo);
 GO
 
 -- =============================================

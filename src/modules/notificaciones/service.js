@@ -5,6 +5,9 @@
 
 import nodemailer from 'nodemailer';
 import { loadEnv } from '../../config/env.js';
+import * as notificacionesRepository from './repository.js';
+import { findByEmail } from '../users/repository.js';
+import { getNotificationTypeByRole } from './notificationHelper.js';
 
 const env = loadEnv();
 
@@ -30,7 +33,7 @@ function getTransporter() {
  * Envía una notificación por email
  * @param {string} email - Email del destinatario
  * @param {string} evento - Tipo de evento (creacion, aprobacion, rechazo, anulacion)
- * @param {object} detalles - Detalles adicionales (folio, motivo, aprobador, etc.)
+ * @param {object} detalles - Detalles adicionales (folio, motivo, aprobador, usuarioId, etc.)
  * @param {string} tipo - Tipo de notificación: 'comprador' (general) o 'admin' (específica)
  * @returns {Promise<object>} Resultado de la operación
  */
@@ -74,7 +77,7 @@ export async function enviarNotificacion(email, evento, detalles = {}, tipo = 'c
         ? `${detalles.usuario} anuló la solicitud ${detalles.numero}`
         : 'Una solicitud ha sido anulada',
       contacto: detalles.solicitudNumero && detalles.mensaje
-        ? `Un comprador tiene una duda sobre la solicitud ${detalles.solicitudNumero}: "${detalles.mensaje}"`
+        ? `${detalles.compradorNombre || 'Un comprador'} (${detalles.compradorEmail || 'comprador'}) tiene una duda sobre la solicitud ${detalles.solicitudNumero}: "${detalles.mensaje}"`
         : 'Un usuario tiene una duda sobre una solicitud',
     };
 
@@ -90,10 +93,89 @@ export async function enviarNotificacion(email, evento, detalles = {}, tipo = 'c
     asunto = asuntos[evento] || 'Notificación';
   }
 
+  // Obtener usuarioId: primero de detalles, luego buscar por email
+  let usuarioId = detalles.usuarioId || null;
+  
+  console.log(`[NOTIFICACIÓN] Iniciando envío - email: ${email}, evento: ${evento}, tipo: ${tipo}`);
+  console.log(`[NOTIFICACIÓN] detalles recibidos:`, JSON.stringify(detalles, null, 2));
+  console.log(`[NOTIFICACIÓN] usuarioId de detalles: ${usuarioId}`);
+  
+  if (!usuarioId && email) {
+    try {
+      console.log(`[NOTIFICACIÓN] Buscando usuario por email: ${email}`);
+      const usuario = await findByEmail(email);
+      if (usuario) {
+        usuarioId = usuario.id;
+        console.log(`[NOTIFICACIÓN] ✅ Usuario encontrado por email: ${email} -> ID: ${usuarioId}, Rol: ${usuario.role}`);
+      } else {
+        console.warn(`[NOTIFICACIÓN] ⚠️ Usuario no encontrado por email: ${email}`);
+      }
+    } catch (error) {
+      console.error(`[NOTIFICACIÓN] ❌ Error al buscar usuario por email ${email}:`, error.message);
+      console.error(error.stack);
+    }
+  } else if (usuarioId) {
+    console.log(`[NOTIFICACIÓN] ✅ UsuarioId ya disponible: ${usuarioId}`);
+  } else {
+    console.warn(`[NOTIFICACIÓN] ⚠️ No hay usuarioId ni email para buscar usuario`);
+  }
+
+  // Guardar notificación en BD si tenemos usuarioId
+  let notificacionGuardada = null;
+  if (usuarioId) {
+    try {
+      // Determinar el tipo de notificación basado en el rol del usuario
+      // Primero intentar obtener el rol del usuario desde la BD
+      let userRole = null;
+      try {
+        const usuario = await findByEmail(email);
+        if (usuario && usuario.role) {
+          userRole = usuario.role;
+        }
+      } catch (error) {
+        console.warn(`[NOTIFICACIÓN] No se pudo obtener rol del usuario, usando tipo proporcionado`);
+      }
+      
+      // Usar el helper para determinar el tipo, o usar el tipo proporcionado como fallback
+      const tipoNotificacion = userRole 
+        ? getNotificationTypeByRole(userRole)
+        : (tipo === 'comprador' ? 'comprador' : 'aprobador');
+      // Extraer solicitudId de diferentes formas posibles
+      const solicitudId = detalles.solicitudId || detalles.id || detalles.solicitud_id || null;
+      
+      console.log(`[NOTIFICACIÓN] Guardando notificación para usuarioId: ${usuarioId}, email: ${email}, evento: ${evento}, tipo: ${tipoNotificacion}, solicitudId: ${solicitudId}`);
+      
+      notificacionGuardada = await notificacionesRepository.createNotificacion({
+        usuarioId: parseInt(usuarioId),
+        tipo: tipoNotificacion,
+        evento: evento,
+        titulo: asunto,
+        mensaje: mensaje,
+        solicitudId: solicitudId ? parseInt(solicitudId) : null,
+        detalles: detalles,
+      });
+      
+      console.log(`[NOTIFICACIÓN] Notificación guardada exitosamente. ID: ${notificacionGuardada?.id}, usuarioId: ${notificacionGuardada?.usuarioId}, tipo: ${notificacionGuardada?.tipo}`);
+    } catch (error) {
+      console.error(`[NOTIFICACIÓN] Error al guardar notificación en BD para usuarioId ${usuarioId}:`, error.message);
+      console.error(error.stack);
+      // Continuar aunque falle guardar en BD
+    }
+  } else {
+    console.warn(`[NOTIFICACIÓN] No se pudo guardar notificación: usuarioId no disponible para email ${email}`);
+  }
+
   // Si no hay configuración de email, solo loguear (para desarrollo)
   if (!env.MAIL_USER || !env.MAIL_PASSWORD) {
     console.log(`[NOTIFICACIÓN ${tipo.toUpperCase()}] Email a ${email}: ${mensaje}`);
-    return { enviado: false, modo: 'desarrollo', email, evento, tipo };
+    return { 
+      enviado: false, 
+      modo: 'desarrollo', 
+      email, 
+      evento, 
+      tipo,
+      notificacionId: notificacionGuardada?.id || null,
+    };
   }
 
   try {
@@ -106,10 +188,24 @@ export async function enviarNotificacion(email, evento, detalles = {}, tipo = 'c
       text: mensaje,
     });
 
-    return { enviado: true, email, evento, tipo };
+    return { 
+      enviado: true, 
+      email, 
+      evento, 
+      tipo,
+      notificacionId: notificacionGuardada?.id || null,
+    };
   } catch (error) {
     console.error('Error al enviar notificación:', error);
     throw new Error(`Error al enviar notificación: ${error.message}`);
   }
+}
+
+/**
+ * Crear notificación persistente sin enviar email
+ * Útil para notificaciones internas del sistema
+ */
+export async function crearNotificacion(notificacionData) {
+  return await notificacionesRepository.createNotificacion(notificacionData);
 }
 

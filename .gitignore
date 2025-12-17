@@ -13,3 +13,5 @@ docker-compose.yml
 src/db/migrations/
 scripts/runMigrations.js
 .backup_local/
+coverage/
+*.zip

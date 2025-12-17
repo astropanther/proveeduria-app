@@ -91,20 +91,33 @@ router.get("/descargar/:archivo", authGuard([ROLES.ADMIN, ROLES.APROBADOR_FINANC
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     }
 
+    // Headers para descarga
     res.setHeader("Content-Type", contentType);
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${decodedArchivo}"`
+      `attachment; filename="${decodedArchivo}"; filename*=UTF-8''${encodeURIComponent(decodedArchivo)}`
     );
+    res.setHeader("Cache-Control", "no-cache");
 
+    // Leer y enviar el archivo
     const fileStream = fs.createReadStream(normalizedFilePath);
+    
     fileStream.on("error", (err) => {
       console.error("Error al leer archivo:", err);
       if (!res.headersSent) {
         res.status(500).json({ error: "Error al leer archivo" });
       }
     });
+    
+    fileStream.on("open", () => {
+      console.log("Archivo abierto correctamente, iniciando descarga...");
+    });
+    
     fileStream.pipe(res);
+    
+    res.on("finish", () => {
+      console.log("Descarga completada exitosamente");
+    });
   } catch (error) {
     console.error("Error en descarga:", error);
     if (!res.headersSent) {
