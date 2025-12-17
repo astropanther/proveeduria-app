@@ -75,7 +75,7 @@ router.post('/init', async (req, res) => {
     // Crear usuario admin
     const admin = await userRepository.create({
       email: 'admin@proveeduria.com',
-      password: 'admin123',
+      password: 'Proveeduria2024!Sys',
       role: ROLES.ADMIN,
       nombre: 'Administrador',
     });

@@ -72,7 +72,7 @@ async function runTests() {
   log('\n[2] Autenticación', 'yellow');
   
   // Login exitoso
-  const loginResult = await login('admin@proveeduria.com', 'admin123');
+  const loginResult = await login('admin@proveeduria.com', 'Proveeduria2024!Sys');
   const hasToken = loginResult.data?.token;
   logTest('Login exitoso con credenciales válidas', hasToken !== undefined);
   

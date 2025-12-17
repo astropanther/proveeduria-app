@@ -157,7 +157,7 @@ export function LoginPage({ onLogin, isDarkMode, onToggleDarkMode }: LoginPagePr
             <div className="pt-6 border-t border-border">
               <p className="text-muted-foreground text-[0.65rem] uppercase tracking-[0.2em] mb-4">Usuarios de prueba:</p>
               <div className="space-y-2 text-muted-foreground text-[0.7rem] font-mono">
-                <p>admin@proveeduria.com / admin123</p>
+                <p>admin@proveeduria.com / Proveeduria2024!Sys</p>
                 <p>comprador1@proveeduria.com / comprador123</p>
                 <p>aprobador1@proveeduria.com / aprobador123</p>
               </div>

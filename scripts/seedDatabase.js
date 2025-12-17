@@ -3,9 +3,9 @@
  * Ejecutar: npm run seed:db
  */
 
-import { query, getPool, closePool } from '../src/db/connection.js';
+import { query, getPool, closePool } from '../backend/src/db/connection.js';
 import bcrypt from 'bcryptjs';
-import { loadEnv } from '../src/config/env.js';
+import { loadEnv } from '../backend/src/config/env.js';
 
 const env = loadEnv();
 
@@ -24,7 +24,7 @@ async function seedDatabase() {
 
     // 1. Crear usuarios
     console.log('Creando usuarios...');
-    const passwordHash = await bcrypt.hash('admin123', 10);
+    const passwordHash = await bcrypt.hash('Proveeduria2024!Sys', 10);
 
     // Verificar si ya existe el admin
     const existingAdmin = await query(
@@ -258,7 +258,7 @@ async function seedDatabase() {
     console.log('  - Usuarios: 5 usuarios creados');
     console.log('  - Solicitudes: 5 solicitudes de ejemplo creadas');
     console.log('\nCredenciales de acceso:');
-    console.log('  Admin: admin@proveeduria.com / admin123');
+    console.log('  Admin: admin@proveeduria.com / Proveeduria2024!Sys');
     console.log('  Comprador: comprador1@proveeduria.com / comprador123');
     console.log('  Aprobador Jefe: aprobador1@proveeduria.com / aprobador123');
     console.log('  Aprobador Financiero: aprobador2@proveeduria.com / aprobador123');

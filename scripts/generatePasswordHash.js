@@ -5,7 +5,7 @@
 
 import bcrypt from 'bcryptjs';
 
-const password = process.argv[2] || 'admin123';
+const password = process.argv[2] || 'Proveeduria2024!Sys';
 
 bcrypt.hash(password, 10, (err, hash) => {
   if (err) {

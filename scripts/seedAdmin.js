@@ -5,8 +5,8 @@
  * Uso: node scripts/seedAdmin.js
  */
 
-import * as userRepository from '../src/modules/users/repository.js';
-import { ROLES } from '../src/modules/users/types.js';
+import * as userRepository from '../backend/src/modules/users/repository.js';
+import { ROLES } from '../backend/src/modules/users/types.js';
 
 async function seedAdmin() {
   try {
@@ -23,7 +23,7 @@ async function seedAdmin() {
     // Crear usuario admin
     const admin = await userRepository.create({
       email: 'admin@proveeduria.com',
-      password: 'admin123', // Cambiar en producción
+      password: 'Proveeduria2024!Sys', // Contraseña segura que cumple con los parámetros
       role: ROLES.ADMIN,
       nombre: 'Administrador',
     });

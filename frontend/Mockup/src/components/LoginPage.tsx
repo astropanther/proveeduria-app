@@ -14,7 +14,7 @@ interface LoginPageProps {
 
 // Mock users para testing
 const mockUsers = [
-  { id: '1', email: 'admin@empresa.com', password: 'admin123', nombre: 'Admin Usuario', rol: 'admin' as UserRole },
+  { id: '1', email: 'admin@empresa.com', password: 'Proveeduria2024!Sys', nombre: 'Admin Usuario', rol: 'admin' as UserRole },
   { id: '2', email: 'comprador@empresa.com', password: 'comprador123', nombre: 'Juan Pérez', rol: 'comprador' as UserRole },
   { id: '3', email: 'jefe@empresa.com', password: 'jefe123', nombre: 'María García', rol: 'aprobador_jefe' as UserRole },
   { id: '4', email: 'finanzas@empresa.com', password: 'finanzas123', nombre: 'Carlos López', rol: 'aprobador_financiero' as UserRole },
@@ -136,7 +136,7 @@ export function LoginPage({ onLogin, isDarkMode, onToggleDarkMode }: LoginPagePr
             <div className="pt-6 border-t border-border">
               <p className="text-muted-foreground text-[0.65rem] uppercase tracking-[0.2em] mb-4">Usuarios de prueba:</p>
               <div className="space-y-2 text-muted-foreground text-[0.7rem] font-mono">
-                <p>admin@empresa.com / admin123</p>
+                <p>admin@empresa.com / Proveeduria2024!Sys</p>
                 <p>comprador@empresa.com / comprador123</p>
                 <p>jefe@empresa.com / jefe123</p>
                 <p>finanzas@empresa.com / finanzas123</p>

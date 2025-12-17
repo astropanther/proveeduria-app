@@ -129,6 +129,7 @@ GO
 -- =============================================
 -- Tabla: notificaciones
 -- PB-13: Notificaciones Persistentes para Inbox
+-- IMPORTANTE: Esta tabla es necesaria para que las notificaciones aparezcan en el sistema
 -- =============================================
 IF OBJECT_ID('notificaciones', 'U') IS NOT NULL
     DROP TABLE notificaciones;
@@ -137,7 +138,7 @@ GO
 CREATE TABLE notificaciones (
     id INT IDENTITY(1,1) PRIMARY KEY,
     usuario_id INT NOT NULL,
-    tipo NVARCHAR(50) NOT NULL, -- 'comprador', 'aprobador', 'admin'
+    tipo NVARCHAR(50) NOT NULL CHECK (tipo IN ('comprador', 'aprobador', 'admin')),
     evento NVARCHAR(50) NOT NULL, -- 'creacion', 'aprobacion', 'rechazo', 'anulacion', 'nueva_solicitud', 'contacto'
     titulo NVARCHAR(255) NOT NULL,
     mensaje NVARCHAR(1000) NOT NULL,
@@ -316,4 +317,5 @@ GO
 
 PRINT 'Base de datos creada exitosamente!';
 GO
+
 

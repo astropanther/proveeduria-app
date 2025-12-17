@@ -7,13 +7,13 @@ GO
 -- Nota: Las contraseñas están hasheadas con bcrypt. Para generar nuevas:
 -- node scripts/generatePasswordHash.js
 
--- Admin (password: Admin2024!Secure)
+-- Admin (password: Proveeduria2024!Sys)
 IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@proveeduria.com')
 BEGIN
     INSERT INTO users (email, password_hash, role, nombre, activo, created_at)
     VALUES (
         'admin@proveeduria.com',
-        '$2b$10$nxBCrmndj9u3Q9RRrfVIxeD416tFdJ/P0aGfIbYtNyUVDS30y0qxq',
+        '$2b$10$LZ8meIUuJsyZ4a7AxhHYquGwSiHemmerLO8PkAyREdWBlPMo3wuu2',
         'Administrador',
         'Administrador',
         1,
